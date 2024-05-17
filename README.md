@@ -8,6 +8,9 @@ Not finished yet. Not really designed for reusability.
 
 ## Build locally
 
+To convert text to binary (uses [wabt](https://github.com/webassembly/wabt)):
+
 ```shell
-wasm-pack build --target web
+wat2wasm gc.wat -o gc.wasm
 ```
+

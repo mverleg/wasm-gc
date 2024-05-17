@@ -11,6 +11,6 @@ Not finished yet. Not really designed for reusability.
 To convert text to binary (uses [wabt](https://github.com/webassembly/wabt)):
 
 ```shell
-wat2wasm gc.wat -o gc.wasm
+wat2wasm --debug-names gc.wat -o gc.wasm
 ```
 

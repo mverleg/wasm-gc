@@ -1,6 +1,13 @@
+use ::wasm_bindgen::prelude::*;
 
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
+#[wasm_bindgen]
+pub fn allocate(byte_cnt: usize) -> usize {
+    panic!("alloc: out of memory")
+}
+
+#[wasm_bindgen]
+pub fn deallocate(addr: usize) {
+    unimplemented!()
 }
 
 #[cfg(test)]
@@ -9,7 +16,7 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+        let addr = allocate(4);
+        deallocate(addr);
     }
 }

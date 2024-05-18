@@ -21,6 +21,7 @@ fn run(wat_file: Option<String>) {
     let mut prog = WasmProg::load(&wat_file.unwrap_or_else(|| "main.wat".to_owned()));
     let res = prog.run("tests", &[]);
     assert_eq!(&*res, &[Value::I32(0)], "test(s) failed");
+    println!("done")
 }
 
 fn log_i32(nr: i32) {

@@ -15,6 +15,7 @@
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
+    (import "host" "log_err_code" (func $log_err_code (param i32)))
     (memory 1)
     ;; default alloc, traps when OOM
     (func $alloc (export "alloc")
@@ -23,17 +24,15 @@
             (param $is_mutable i32)
             (result i32)  ;; addr
         (block $alloc_ok
-            local.get $pointer_cnt
-            local.get $data_size
-            local.get $is_mutable
-            call $alloc0
-            i32.const 0
-            i32.eq
+            (i32.eq
+                (call $alloc0 (local.get $pointer_cnt) (local.get $data_size) (local.get $is_mutable))
+                (i32.const 0))
             br_if $alloc_ok
             i32.const 1  ;;TODO @mark:
             return
         )
         ;; OOM (returned 0)
+        (call $log_err_code (i32.const 1))
         unreachable
     )
     ;; like $alloc, but returns 0 when OOM, so user code can handle it
@@ -57,12 +56,9 @@
             (result i32)  ;; 0 if ok, 1 if fail
         (block $outer
             (block $test_alloc
-                i32.const 0
-                i32.const 4
-                i32.const 0
-                call $alloc
-                i32.const 2
-                i32.ne
+                (i32.ne
+                    (call $alloc (i32.const 0) (i32.const 4) (i32.const 0))
+                    (i32.const 2))
                 br_if $outer
             )
         )

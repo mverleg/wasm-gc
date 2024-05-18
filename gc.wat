@@ -18,15 +18,19 @@
     (memory 1)
     ;; default alloc, traps when OOM
     (func $alloc (export "alloc")
-            (param i32)  ;; number of pointers
-            (param i32)  ;; additional size
-            (param i32)  ;; is-mutable
+            (param $pointer_cnt i32)
+            (param $data_size i32)
+            (param $is_mutable i32)
             (result i32)  ;; addr
-        call $alloc0
         (block $alloc_ok
+            local.get $pointer_cnt
+            local.get $data_size
+            local.get $is_mutable
+            call $alloc0
             i32.const 0
             i32.eq
             br_if $alloc_ok
+            i32.const 1  ;;TODO @mark:
             return
         )
         ;; OOM (returned 0)
@@ -34,9 +38,9 @@
     )
     ;; like $alloc, but returns 0 when OOM, so user code can handle it
     (func $alloc0 (export "alloc0")
-            (param i32)  ;; number of pointers
-            (param i32)  ;; additional size
-            (param i32)  ;; is-mutable
+            (param $pointer_cnt i32)
+            (param $data_size i32)
+            (param $is_mutable i32)
             (result i32)  ;; addr
         i32.const 0  ;;TODO @mark:
     )
@@ -53,7 +57,9 @@
             (result i32)  ;; 0 if ok, 1 if fail
         (block $outer
             (block $test_alloc
+                i32.const 0
                 i32.const 4
+                i32.const 0
                 call $alloc
                 i32.const 2
                 i32.ne

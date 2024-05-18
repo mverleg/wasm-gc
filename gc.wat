@@ -11,7 +11,7 @@
     (func $gc_full (export "gc_full")
     )
 
-    (func $gc_tests (export "gc_tests")
+    (func $gc_tests (export "tests")
             (result i32)  ;; 0 if ok, 1 if fail
         (block $outer
             (block $test_alloc

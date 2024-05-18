@@ -16,19 +16,29 @@
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
     (memory 1)
-    ;; default alloc returns 0 when OOM
-    (func $alloc (export "alloc")
-            (param i32)  ;; size
-            (result i32)  ;; addr
-        i32.const 1
-    )
-    ;;
+    ;; default alloc, traps when OOM
     (func $alloc (export "alloc")
             (param i32)  ;; number of pointers
             (param i32)  ;; additional size
             (param i32)  ;; is-mutable
             (result i32)  ;; addr
-        i32.const 1
+        call $alloc0
+        (block $alloc_ok
+            i32.const 0
+            i32.eq
+            br_if $alloc_ok
+            return
+        )
+        ;; OOM (returned 0)
+        unreachable
+    )
+    ;; like $alloc, but returns 0 when OOM, so user code can handle it
+    (func $alloc0 (export "alloc0")
+            (param i32)  ;; number of pointers
+            (param i32)  ;; additional size
+            (param i32)  ;; is-mutable
+            (result i32)  ;; addr
+        i32.const 0  ;;TODO @mark:
     )
     ;; do a small GC, e.g. young generation only
     (func $gc_fast (export "gc_fast")

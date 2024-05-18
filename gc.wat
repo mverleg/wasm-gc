@@ -1,6 +1,7 @@
 
 ;; This wasm GC makes some important assumptions:
 ;; - allocations are N pointers followed by M bytes if non-pointer data
+        ;;TODO @mark: how does this work with arrays? ^
 ;; - code only reads/writes allocated memory, and only while reachable from either roots or allocated pointers
 ;; - roots don't change during GC
 ;; - there is a single thread (or in the future perhaps one heap per thread)
@@ -47,7 +48,8 @@
             (result i32)  ;; addr
             (local $offset_addr i32)
             (local $init_top i32)
-            (local $alloc_size i32)
+            (local $req_alloc_size i32)
+            (local $meta_alloc_size i32)
         (local.set $offset_addr (i32.const 1))
 
         ;; mutable not supported yet
@@ -64,13 +66,17 @@
         ))
 
         ;; calculate the necessary size including metadata
-        (i32.add (i32.const 1) (i32.add (local.get $pointer_cnt) (local.get $data_size)))
-        (local.set $alloc_size)
+        (local.set $req_alloc_size (i32.add (local.get $pointer_cnt) (local.get $data_size)))
+        (local.set $meta_alloc_size (i32.add (i32.const 1) (local.get $req_alloc_size)))
 
         ;; read current end-of-young-gen address
         (local.set $init_top (i32.load (local.get $offset_addr)))
         (i32.store (local.get $offset_addr) (i32.add
-                (local.get $init_top) (local.get $alloc_size)))
+                (local.get $init_top) (local.get $meta_alloc_size)))
+
+        ;; write metadata - just length for now
+        (call $log_i32 (local.get $init_top))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (i32.store (local.get $init_top) (local.get $meta_alloc_size))
 
         ;; (call $log_i32 (local.get $init_top))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         ;; (call $log_i32 (local.get $alloc_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
@@ -89,6 +95,8 @@
 
     (func $gc_tests (export "tests")
             (result i32)  ;; 0 if ok, 1 if fail
+
+        ;; first allocation
         (i32.ne
             (call $alloc (i32.const 0) (i32.const 4) (i32.const 0))
             (i32.const 3))
@@ -96,6 +104,17 @@
             (call $log_err_code (i32.const 100))
             unreachable
         ))
+
+        ;; what if we do it again
+        (i32.ne
+            (call $alloc (i32.const 0) (i32.const 4) (i32.const 0))
+            (i32.const 8))
+        (if (then
+            (call $log_err_code (i32.const 101))
+            unreachable
+        ))
+
+        ;; no error yet
         i32.const 0
     )
 )

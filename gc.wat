@@ -7,6 +7,7 @@
 ;; - there is a single thread (or in the future perhaps one heap per thread)
 ;; - most data is immutable, and only mutable data can mutate
 ;;   (this is important for e.g. the assumption that old gen cannot point to young gen)
+;; - all allocations are multiples of 32 bytes
 ;; priorities for the GC are:
 ;; - small size
 ;; - easy to configure
@@ -14,22 +15,27 @@
 ;;   performance encompasses everything: allocation, GC, memory locality, etc
 ;;TODO @mark: ^ is all this still correct?
 
+;;TODO @mark: how to handle 0-byte allocations? is there reference equality anywhere?
+
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
     (import "host" "log_err_code" (func $log_err_code (param i32)))
     (memory 1)
-    (func $alloc_init (i32.store (i32.const 1) (i32.const 2)))
+    (func $alloc_init (i32.store (i32.const 4) (i32.const 8)))
     (start $alloc_init)
     ;; default alloc, traps when OOM
     (func $alloc (export "alloc")
             (param $pointer_cnt i32)
-            (param $data_size i32)
+            (param $data_size_32 i32)  ;; units are 32-bit words
             (param $is_mutable i32)
             (result i32)  ;; addr
             (local $res i32)
         (block $alloc_ok
             (local.set $res
-                (call $alloc0 (local.get $pointer_cnt) (local.get $data_size) (local.get $is_mutable)))
+                (call $alloc0
+                    (local.get $pointer_cnt)
+                    (local.get $data_size_32)
+                    (local.get $is_mutable)))
             (i32.eq
                 (local.get $res)
                 (i32.const 0))
@@ -43,14 +49,14 @@
     ;; like $alloc, but returns 0 when OOM, so user code can handle it
     (func $alloc0 (export "alloc0")
             (param $pointer_cnt i32)
-            (param $data_size i32)
+            (param $data_size_32 i32)  ;; units are 32-bit words
             (param $is_mutable i32)
             (result i32)  ;; addr
             (local $offset_addr i32)
             (local $init_top i32)
             (local $req_alloc_size i32)
             (local $meta_alloc_size i32)
-        (local.set $offset_addr (i32.const 1))
+        (local.set $offset_addr (i32.const 4))
 
         ;; mutable not supported yet
         (i32.ne (local.get $is_mutable) (i32.const 0))
@@ -66,8 +72,9 @@
         ))
 
         ;; calculate the necessary size including metadata
-        (local.set $req_alloc_size (i32.add (local.get $pointer_cnt) (local.get $data_size)))
-        (local.set $meta_alloc_size (i32.add (i32.const 1) (local.get $req_alloc_size)))
+        (local.set $req_alloc_size (i32.mul (i32.const 4)
+                (i32.add (local.get $pointer_cnt) (local.get $data_size_32))))
+        (local.set $meta_alloc_size (i32.add (i32.const 4) (local.get $req_alloc_size)))
 
         ;; read current end-of-young-gen address
         (local.set $init_top (i32.load (local.get $offset_addr)))
@@ -75,14 +82,13 @@
                 (local.get $init_top) (local.get $meta_alloc_size)))
 
         ;; write metadata - just length for now
-        (call $log_i32 (local.get $init_top))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (i32.store (local.get $init_top) (local.get $meta_alloc_size))
 
         ;; (call $log_i32 (local.get $init_top))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         ;; (call $log_i32 (local.get $alloc_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; return data address, which is after metadata
-        (return (i32.add (local.get $init_top) (i32.const 1)))
+        (return (i32.add (local.get $init_top) (i32.const 4)))
     )
     ;; do a small GC, e.g. young generation only
     (func $gc_fast (export "gc_fast")
@@ -98,8 +104,8 @@
 
         ;; first allocation
         (i32.ne
-            (call $alloc (i32.const 0) (i32.const 4) (i32.const 0))
-            (i32.const 3))
+            (call $alloc (i32.const 0) (i32.const 2) (i32.const 0))
+            (i32.const 12))
         (if (then
             (call $log_err_code (i32.const 100))
             unreachable
@@ -107,8 +113,8 @@
 
         ;; what if we do it again
         (i32.ne
-            (call $alloc (i32.const 0) (i32.const 4) (i32.const 0))
-            (i32.const 8))
+            (call $alloc (i32.const 0) (i32.const 1) (i32.const 0))
+            (i32.const 24))
         (if (then
             (call $log_err_code (i32.const 101))
             unreachable

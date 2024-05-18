@@ -1,4 +1,5 @@
 (module
+    (import "host" "log_i32" (func $log_i32 (param i32)))
     (memory 1)
     (func $alloc (export "alloc")
             (param i32)  ;; size
@@ -24,6 +25,4 @@
         i32.const 0
         return
     )
-
-    ;; (start $gc_tests)
 )

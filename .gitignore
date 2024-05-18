@@ -2,3 +2,4 @@
 /.idea/
 /pkg/
 *.wasm
+Cargo.lock

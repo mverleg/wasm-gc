@@ -41,6 +41,7 @@
 ;; - is array? length?
 ;; Some of this is per-type instead of per-object, but might still be efficient to duplicate
 
+;; TODO switch to globals https://augustus-pash.gitbook.io/wasm/types/globals
 ;; TODO how to find roots?
 ;; TODO how to handle arrays (detect pointers)
 ;; TODO how to handle 0-byte allocations? is there reference equality anywhere?
@@ -66,7 +67,14 @@
     (func $const_old_heap_max_size (result i32) i32.const 0)
 
     (func $const_addr_stack_offset (result i32) i32.const 20)
-    (func $const_addr_young_offset (result i32) (i32.add (call $const_stack_max_size) (call $const_addr_stack_offset)))
+    (func $const_addr_young_offset (result i32) (local $res i32)
+        (local.set $res (i32.add (call $const_stack_max_size) (call $const_addr_stack_offset)))
+        (i32.ne (call $const_addr_young_side) (i32.const 0))
+        (if (then
+            (local.set $res (i32.add (local.get $res) (call $const_addr_young_length)))
+        ))
+        local.get $res
+    )
 
     ;; default alloc, traps when OOM
     (func $alloc (export "alloc")
@@ -211,7 +219,8 @@
 
     (func $get_young_size
             (result i32)
-        (i32.sub (i32.load (call $const_addr_young_length)) (call $const_addr_young_offset))
+        ;;(i32.sub (i32.load (call $const_addr_young_length)) (call $const_addr_young_offset))
+        call $const_addr_young_length
     )
 
     (func $print_memory
@@ -222,7 +231,7 @@
     (func $print_stack
             (local $i i32)
             (local $upto i32)
-        unreachable
+        ;;TODO @mark:
     )
 
     (func $print_heap
@@ -247,6 +256,8 @@
     ;; TESTS
     ;;
 
+    ;;(func $fail (param $code i32) (call $log_err_code (i32.const 107)) unreachable)
+
     (func $gc_tests (export "tests")
         (call $test_empty_heap)
 
@@ -261,7 +272,7 @@
     (func $test_empty_heap
         (call $alloc_init)  ;; reset heap
         (i32.ne (call $get_young_size) (i32.const 0))
-        (if (then (call $log_err_code (i32.const 106)) unreachable))
+        (if (then (call $log_err_code (i32.const 107)) unreachable))
     )
 
     (func $test_double_data_alloc

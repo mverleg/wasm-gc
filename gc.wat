@@ -145,7 +145,7 @@
 
     (func $get_young_size
             (result i32)
-        (i32.load (call $const_addr_young_length))
+        (i32.sub (i32.load (call $const_addr_young_length)) (i32.const 8))
     )
 
     (func $print_heap
@@ -175,12 +175,20 @@
     ;;
 
     (func $gc_tests (export "tests")
+        (call $test_empty_heap)
+
         (call $test_double_data_alloc)
         (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $alloc_init)  ;; reset heap
 
-        (call $test_alloc_almost_1M)
+        (call $test_alloc_almost_1M_and_GC)
         (call $alloc_init)  ;; reset heap
+    )
+
+    (func $test_empty_heap
+        (call $alloc_init)  ;; reset heap
+        (i32.ne (call $get_young_size) (i32.const 0))
+        (if (then (call $log_err_code (i32.const 106)) unreachable))
     )
 
     (func $test_double_data_alloc
@@ -206,14 +214,14 @@
         ;; check young size (note pointer returned before if after metadata but before actual data)
         (i32.ne
             (call $get_young_size)
-            (i32.const 28))
+            (i32.const 20))
         (if (then
             (call $log_err_code (i32.const 102))
             unreachable
         ))
     )
 
-    (func $test_alloc_almost_1M
+    (func $test_alloc_almost_1M_and_GC
             (local $i i32)
 
         (local.set $i (i32.const 0))
@@ -224,5 +232,10 @@
             (local.set $i (i32.add (local.get $i) (i32.const 1)))
             br $continue
         ))
+        call $gc_full
+        call $alloc_init
+        (call $log_i32 (call $get_young_size))
+        (i32.ne (call $get_young_size) (i32.const 0))
+        (if (then (call $log_err_code (i32.const 105)) unreachable))
     )
 )

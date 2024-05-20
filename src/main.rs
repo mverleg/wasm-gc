@@ -27,6 +27,10 @@ fn log_i32(nr: i32) {
     println!("log_i32: {nr}")
 }
 
+fn log_i32x4(a: i32, b: i32, c: i32, d: i32) {
+    println!("\t{a}\t{b}\t{c}\t{d}")
+}
+
 fn log_err_code(nr: i32) {
     println!("errcode: {nr}")
 }
@@ -54,6 +58,7 @@ impl WasmProg {
 
         let mut imports = Imports::new();
         imports.define("host", "log_i32", HostFunction::new_typed(&mut store, log_i32));
+        imports.define("host", "log_i32x4", HostFunction::new_typed(&mut store, log_i32x4));
         imports.define("host", "log_err_code", HostFunction::new_typed(&mut store, log_err_code));
         let instance = Instance::new(&mut store, &module, &imports).unwrap();
         

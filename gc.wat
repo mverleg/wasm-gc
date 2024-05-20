@@ -31,6 +31,7 @@
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
+    (import "host" "log_i32x4" (func $log_i32x4 (param i32) (param i32) (param i32) (param i32)))
     (import "host" "log_err_code" (func $log_err_code (param i32)))
     (memory 1 1)  ;; 64k
     (func $alloc_init (i32.store (call $const_addr_young_length) (i32.const 8)))
@@ -151,11 +152,17 @@
             (local $i i32)
             (local $upto i32)
         (local.set $upto (i32.load (call $const_addr_young_length)))
-        (call $log_i32 (local.get $upto))
-        (block $outer (loop
-            (i32.lt_u (local.get $i) (local.get $upto))
+        (local.set $i (i32.const 0))
+        (block $outer (loop $continue
+            (i32.ge_u (local.get $i) (local.get $upto))
             br_if $outer
-            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            (call $log_i32x4
+                    (i32.load8_u (i32.add (local.get $i) (i32.const 0)))
+                    (i32.load8_u (i32.add (local.get $i) (i32.const 1)))
+                    (i32.load8_u (i32.add (local.get $i) (i32.const 2)))
+                    (i32.load8_u (i32.add (local.get $i) (i32.const 3))))
+            (local.set $i (i32.add (local.get $i) (i32.const 4)))
+            (br $continue)
         ))
     )
 
@@ -169,7 +176,10 @@
 
     (func $gc_tests (export "tests")
         (call $test_double_data_alloc)
+        (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $alloc_init)  ;; reset heap
+        (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
     )
 
     (func $test_double_data_alloc

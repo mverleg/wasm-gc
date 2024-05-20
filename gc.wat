@@ -243,16 +243,16 @@
         ;; fill almost all memory
         (local.set $i (i32.const 0))
         (block $outer (loop $continue
-            (i32.ge_u (local.get $i) (i32.const 30))
+            (i32.ge_u (local.get $i) (i32.const 32))
             br_if $outer
+            ;;TODO @mark: TEMPORARY! REMOVE THIS!(call $log_err_code (local.get $i))
             (drop (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))
             (local.set $i (i32.add (local.get $i) (i32.const 1)))
             br $continue
         ))
 
         ;; test that alloc fails
-        (call $log_i32 (call $alloc0 (i32.const 0) (i32.const 127) (i32.const 0)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        (call $alloc (i32.const 0) (i32.const 127) (i32.const 0))
+        (call $alloc0 (i32.const 0) (i32.const 127) (i32.const 0))
         (i32.ne (i32.const 0))
         (if (then (call $log_err_code (i32.const 105)) unreachable))
 

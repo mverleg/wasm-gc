@@ -72,19 +72,29 @@
     (func $const_young_side_max_size (result i32) i32.const 16384)
     (func $const_old_heap_max_size (result i32) i32.const 0)
 
-    (func $glob_addr_stack_offset (result i32) i32.const 20)
-    (func $glob_addr_young_offset (result i32) (local $res i32)
+    (func $glob_stack_start_addr (result i32) i32.const 20)
+    (func $glob_young_start_addr (result i32) (local $res i32)
         ;; start of stack + length of stack + currently used stack space
-        (local.set $res (i32.add (i32.add
-            (i32.mul (i32.const 4) (call $const_stack_max_size))
-            (i32.mul (i32.const 4) (i32.load (call $addr_young_length)))
-            (call $glob_addr_stack_offset))))
+
+        ;; (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        ;; (call $log_i32 (call $glob_stack_start_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        ;; (call $log_i32 (i32.mul (i32.const 4) (call $const_stack_max_size)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        ;; (call $log_i32 (i32.mul (i32.const 4) (i32.load (call $addr_young_length))))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+
+        (local.set $res (i32.add
+            (call $glob_stack_start_addr)
+            (i32.mul (i32.const 4) (i32.add
+                (call $const_stack_max_size)
+                (i32.load (call $addr_young_length))))))
+
         (if (i32.ne (i32.load (call $addr_young_side)) (i32.const 0)) (then
             ;; when using 'other half' of young, add one half's size
+            ;; (call $log_i32 (i32.mul (i32.const 4) (call $const_young_side_max_size)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
             (local.set $res (i32.add
                 (i32.mul (i32.const 4) (call $const_young_side_max_size))
                 (local.get $res)))
         ))
+        ;; (call $log_i32 (i32.const -2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         local.get $res
     )
 
@@ -140,7 +150,7 @@
 
         ;; calculate new young heap size (but don't update yet)
         (local.set $orig_young_length (i32.load (call $addr_young_length)))
-        (local.set $new_young_length (local.get $orig_young_length) (local.get $alloc_size))
+        (local.set $new_young_length (i32.add (local.get $orig_young_length) (local.get $alloc_size)))
 
         ;; check if enough memory
         (if (i32.gt_u (local.get $new_young_length) (call $const_young_side_max_size)) (then
@@ -148,7 +158,7 @@
 
         ;; find current top of young heap addr
         (local.set $orig_offset_addr (i32.add
-            (call $glob_addr_young_offset)
+            (call $glob_young_start_addr)
             (i32.mul (i32.const 4) (local.get $orig_young_length))))
 
         ;; write metadata - just length for now
@@ -293,12 +303,6 @@
         (call $log_i32 (call $alloc (i32.const 0) (i32.const 1) (i32.const 0)))
         (if (i32.ne (call $get_young_size) (i32.const 5)) (then
             (call $log_err_code (i32.const 101))
-            unreachable
-        ))
-
-        ;; check young size (note pointer returned before if after metadata but before actual data)
-        (if (i32.ne (call $get_young_size) (i32.const 20)) (then
-            (call $log_err_code (i32.const 102))
             unreachable
         ))
     )

@@ -51,7 +51,7 @@
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
-    (import "host" "log_i32x4" (func $log_i32x4 (param i32) (param i32) (param i32) (param i32)))
+    (import "host" "log_i32x5" (func $log_i32x5 (param i32) (param i32) (param i32) (param i32) (param i32)))
     (import "host" "log_err_code" (func $log_err_code (param i32)))
     (memory 3 3)  ;; 2x 64k
     (func $alloc_init
@@ -302,18 +302,32 @@
     (func $print_stack
             (local $i i32)
             (local $upto i32)
-        ;;TODO @mark:
+        (local.set $upto (i32.load (call $addr_stack_length)))
+        (local.set $i (i32.load (call $glob_stack_start_addr)))
+        (block $outer (loop $continue
+            (i32.ge_u (local.get $i) (local.get $upto))
+            br_if $outer
+            (call $log_i32x5
+                    (i32.div_s (local.get $i) (i32.const -4))
+                    (i32.load8_u (i32.add (local.get $i) (i32.const 0)))
+                    (i32.load8_u (i32.add (local.get $i) (i32.const 1)))
+                    (i32.load8_u (i32.add (local.get $i) (i32.const 2)))
+                    (i32.load8_u (i32.add (local.get $i) (i32.const 3))))
+            (local.set $i (i32.add (local.get $i) (i32.const 4)))
+            (br $continue)
+        ))
     )
 
     (func $print_heap
             (local $i i32)
             (local $upto i32)
         (local.set $upto (i32.load (call $addr_young_length)))
-        (local.set $i (i32.const 0))
+        (local.set $i (i32.load (call $glob_young_start_addr)))
         (block $outer (loop $continue
             (i32.ge_u (local.get $i) (local.get $upto))
             br_if $outer
-            (call $log_i32x4
+            (call $log_i32x5
+                    (i32.div_s (local.get $i) (i32.const 4))
                     (i32.load8_u (i32.add (local.get $i) (i32.const 0)))
                     (i32.load8_u (i32.add (local.get $i) (i32.const 1)))
                     (i32.load8_u (i32.add (local.get $i) (i32.const 2)))

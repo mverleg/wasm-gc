@@ -148,17 +148,15 @@
     )
 
     (func $print_heap
+            (local $i i32)
             (local $upto i32)
         (local.set $upto (i32.load (call $const_addr_young_length)))
         (call $log_i32 (local.get $upto))
-        i32.const 0
         (block $outer (loop
-            local.get $upto
-            i32.lt_u
+            (i32.lt_u (local.get $i) (local.get $upto))
             br_if $outer
-            i32.add (i32.const 1)
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
         ))
-        drop
     )
 
     (func $const_addr_young_length (result i32)

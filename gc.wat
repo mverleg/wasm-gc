@@ -1,5 +1,7 @@
 ;; This wasm GC makes some important assumptions:
 
+;;TODO @mark: edit: also allocate stack values through this, those are used for roots
+
 ;; - allocations are N pointers followed by M bytes if non-pointer data
         ;;TODO @mark: how does this work with arrays? ^
 ;; - code only reads/writes allocated memory, and only while reachable from either roots or allocated pointers
@@ -18,6 +20,17 @@
 ;;   performance encompasses everything: allocation, GC, memory locality, etc
 ;;TODO @mark: ^ is all this still correct?
 ;;
+;; Layout (per thread, 1 for now):
+;; - metadata:
+;;   - 0: empty
+;;   - 4: end of stack
+;;   - 8: 0 if first half of young gen is active, 1 otherwise
+;;   - 12: end of young gen active half
+;;   - 16: end of old gen heap
+;; - stack (partial one for things with pointers or dynamically-sized objects)
+;; - young gen heap, x2 active and GC-target
+;; - old gen heap
+;;
 ;; Metadata:
 ;; - pointer cnt
 ;; - data word size
@@ -33,6 +46,7 @@
 ;; TODO how to handle 0-byte allocations? is there reference equality anywhere?
 ;; TODO have some post-GC handler?
 ;; TODO can the GC have its own stack without reusing or unwinding program stack?
+;; TODO is BF search better because only stack memory (and less total?), or is DF better bc of memory locality?
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
@@ -42,9 +56,17 @@
     (func $alloc_init (i32.store (call $const_addr_young_length) (i32.const 8)))
     (start $alloc_init)
 
-    (func $const_young_side_size (result i32) i32.const 16384)
-    (func $const_addr_young_offset (result i32) i32.const 8)
-    (func $const_addr_young_length (result i32) i32.const 4)
+    (func $const_addr_stack_length (result i32) i32.const 4)
+    (func $const_addr_young_side (result i32) i32.const 8)
+    (func $const_addr_young_length (result i32) i32.const 12)
+    (func $const_addr_old_length (result i32) i32.const 12)
+
+    (func $const_stack_max_size (result i32) i32.const 1024)
+    (func $const_young_side_max_size (result i32) i32.const 16384)
+    (func $const_old_heap_max_size (result i32) i32.const 0)
+
+    (func $const_addr_stack_offset (result i32) i32.const 20)
+    (func $const_addr_young_offset (result i32) (i32.add (call $const_stack_max_size) (call $const_addr_stack_offset)))
 
     ;; default alloc, traps when OOM
     (func $alloc (export "alloc")
@@ -102,13 +124,13 @@
 
         ;; check if enough memory
         ;;TODO should I store the size of the address of heap?
-        (call $log_i32 (local.get $meta_alloc_size))
-        (call $log_i32 (call $get_young_size))
-        (call $log_i32 (i32.add (local.get $meta_alloc_size) (call $get_young_size)))
-        (call $log_i32 (call $const_young_side_size))
-        (call $log_i32 (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_size)))
-        (call $log_i32 (i32.const -1))
-        (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_size))
+        ;;(call $log_i32 (local.get $meta_alloc_size))
+        ;;(call $log_i32 (call $get_young_size))
+        ;;(call $log_i32 (i32.add (local.get $meta_alloc_size) (call $get_young_size)))
+        ;;(call $log_i32 (call $const_young_side_max_size))
+        ;;(call $log_i32 (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_max_size)))
+        ;;(call $log_i32 (i32.const -1))
+        (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_max_size))
         (if (then (return (i32.const 0)) ))
 
         ;; read current end-of-young-gen address
@@ -125,6 +147,30 @@
 
         ;; return data address, which is after metadata
         (return (i32.add (local.get $init_top) (i32.const 4)))
+    )
+
+    ;; start a stack frame; can allocate with stack_alloc,
+    ;; but only if doesn't live past stack_pop.
+    (func $stack_push (export "stack_push")
+        unreachable   ;;TODO @mark: TEMPORARY! REMOVE THIS!
+    )
+
+    ;; drop stack frame started with stack_alloc; assuming
+    ;; all memory is unreferenced.
+    (func $stack_pop (export "stack_pop")
+        unreachable   ;;TODO @mark: TEMPORARY! REMOVE THIS!
+    )
+
+    ;; allocate memory on current stack frame; must be
+    ;; unreferenced before stack_pop.
+    ;; (it may be possible to group several objects into a
+    ;; single allocation, but not all of them, due to
+    ;; dynamically sized objects).
+    (func $stack_alloc (export "stack_alloc")
+            (param $pointer_cnt i32)
+            (param $data_size_32 i32)  ;; units are 32-bit words
+            (result i32)  ;; addr
+        unreachable   ;;TODO @mark: TEMPORARY! REMOVE THIS!
     )
 
     ;; do a small GC, e.g. young generation only
@@ -168,6 +214,17 @@
         (i32.sub (i32.load (call $const_addr_young_length)) (call $const_addr_young_offset))
     )
 
+    (func $print_memory
+        call $print_stack
+        call $print_heap
+    )
+
+    (func $print_stack
+            (local $i i32)
+            (local $upto i32)
+        unreachable
+    )
+
     (func $print_heap
             (local $i i32)
             (local $upto i32)
@@ -194,7 +251,7 @@
         (call $test_empty_heap)
 
         (call $test_double_data_alloc)
-        (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $alloc_init)  ;; reset heap
 
         (call $test_alloc_full_heap_GC)

@@ -9,6 +9,8 @@
 ;;   (this is important for e.g. the assumption that old gen cannot point to young gen)
 ;; - all allocations are multiples of 32 bytes
 ;; - for now (can be lifted): at most 128 pointers and words of data
+;; - objects do not know when they get GC'ed (no finalize/drop methods)
+;;
 ;; priorities for the GC are:
 ;; - small size
 ;; - easy to configure
@@ -20,7 +22,9 @@
 ;; - pointer cnt
 ;; - data word size
 ;; - is mutable
+;; - reachable in current GC
 ;; - generation count
+;; - is redirect in current GC
 ;; - is array? length?
 ;; Some of this is per-type instead of per-object, but might still be efficient to duplicate
 
@@ -28,14 +32,19 @@
 ;; TODO how to handle arrays (detect pointers)
 ;; TODO how to handle 0-byte allocations? is there reference equality anywhere?
 ;; TODO have some post-GC handler?
+;; TODO can the GC have its own stack without reusing or unwinding program stack?
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
     (import "host" "log_i32x4" (func $log_i32x4 (param i32) (param i32) (param i32) (param i32)))
     (import "host" "log_err_code" (func $log_err_code (param i32)))
-    (memory 1 1)  ;; 64k
+    (memory 3 3)  ;; 2x 64k
     (func $alloc_init (i32.store (call $const_addr_young_length) (i32.const 8)))
     (start $alloc_init)
+
+    (func $const_side_size (result i32) i32.const 16384)
+    (func $const_addr_young_offset (result i32) i32.const 8)
+    (func $const_addr_young_length (result i32) i32.const 4)
 
     ;; default alloc, traps when OOM
     (func $alloc (export "alloc")
@@ -145,7 +154,7 @@
 
     (func $get_young_size
             (result i32)
-        (i32.sub (i32.load (call $const_addr_young_length)) (i32.const 8))
+        (i32.sub (i32.load (call $const_addr_young_length)) (call $const_addr_young_offset))
     )
 
     (func $print_heap
@@ -164,10 +173,6 @@
             (local.set $i (i32.add (local.get $i) (i32.const 4)))
             (br $continue)
         ))
-    )
-
-    (func $const_addr_young_length (result i32)
-        i32.const 4
     )
 
     ;;
@@ -224,6 +229,7 @@
     (func $test_alloc_almost_1M_and_GC
             (local $i i32)
 
+        ;; fill almost all memory
         (local.set $i (i32.const 0))
         (block $outer (loop $continue
             (i32.ge_u (local.get $i) (i32.const 127))
@@ -232,10 +238,17 @@
             (local.set $i (i32.add (local.get $i) (i32.const 1)))
             br $continue
         ))
-        call $gc_full
-        call $alloc_init
-        (call $log_i32 (call $get_young_size))
-        (i32.ne (call $get_young_size) (i32.const 0))
+
+        ;; test that alloc fails
+        (call $log_i32 (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $alloc (i32.const 0) (i32.const 127) (i32.const 0))
+        (i32.ne (i32.const 0))
         (if (then (call $log_err_code (i32.const 105)) unreachable))
+
+        ;; test that GC cleans memory
+        call $gc_full
+        call $alloc_init  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (i32.ne (call $get_young_size) (i32.const 0))
+        (if (then (call $log_err_code (i32.const 106)) unreachable))
     )
 )

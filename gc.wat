@@ -96,7 +96,11 @@
                 (local.get $init_top) (local.get $meta_alloc_size)))
 
         ;; write metadata - just length for now
-        (i32.store (local.get $init_top) (local.get $meta_alloc_size))
+        (call $write_metadata
+                (local.get $init_top)
+                (local.get $pointer_cnt)
+                (local.get $data_size_32)
+                (local.get $is_mutable))
 
         ;; return data address, which is after metadata
         (return (i32.add (local.get $init_top) (i32.const 4)))
@@ -110,27 +114,32 @@
     (func $gc_full (export "gc_full")
     )
 
-    ;;
-    ;; some internals, perhaps mostly for testing, as they make it hard to change impl
-    ;;
-
     (func $write_metadata
             (param $meta_addr i32)
             (param $pointer_cnt i32)
             (param $data_size_32 i32)
             (param $is_mutable i32)
-
+        (i32.store8 (i32.add (local.get $meta_addr) (i32.const 2)) (local.get $pointer_cnt))
+        (i32.store8 (i32.add (local.get $meta_addr) (i32.const 3)) (local.get $data_size_32))
     )
 
     (func $read_metadata_pointer_cnt
             (param $meta_addr i32)
             (result i32)
-;;        (i32.load $meta_addr)
-;;        i32.reinterpret_i8
-        i32.const 0  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (i32.load8_u (i32.add (local.get $meta_addr) (i32.const 2)))
     )
 
-    (func $_get_young_size
+    (func $read_metadata_data_word_cnt
+            (param $meta_addr i32)
+            (result i32)
+        (i32.load8_u (i32.add (local.get $meta_addr) (i32.const 3)))
+    )
+
+    ;;
+    ;; some internals, perhaps mostly for testing, as they make it hard to change impl
+    ;;
+
+    (func $get_young_size
             (result i32)
         (i32.load (call $const_addr_young_length))
     )
@@ -145,6 +154,7 @@
 
     (func $gc_tests (export "tests")
         (call $test_double_data_alloc)
+        (call $alloc_init)  ;; reset heap
     )
 
     (func $test_double_data_alloc
@@ -169,10 +179,10 @@
 
         ;; check young size (note pointer returned before if after metadata but before actual data)
         (i32.ne
-            (call $_get_young_size)
+            (call $get_young_size)
             (i32.const 28))
         (if (then
-            (call $log_i32 (call $_get_young_size))
+            (call $log_i32 (call $get_young_size))
             (call $log_err_code (i32.const 102))
             unreachable
         ))

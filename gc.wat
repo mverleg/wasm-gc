@@ -15,14 +15,16 @@
 ;;   performance encompasses everything: allocation, GC, memory locality, etc
 ;;TODO @mark: ^ is all this still correct?
 
-;;TODO @mark: how to handle 0-byte allocations? is there reference equality anywhere?
+;; TODO how to handle 0-byte allocations? is there reference equality anywhere?
+;; TODO have some post-GC handler?
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
     (import "host" "log_err_code" (func $log_err_code (param i32)))
     (memory 1)
-    (func $alloc_init (i32.store (i32.const 4) (i32.const 8)))
+    (func $alloc_init (i32.store (call $const_addr_young_length) (i32.const 8)))
     (start $alloc_init)
+
     ;; default alloc, traps when OOM
     (func $alloc (export "alloc")
             (param $pointer_cnt i32)
@@ -46,6 +48,7 @@
         (call $log_err_code (i32.const 1))
         unreachable
     )
+
     ;; like $alloc, but returns 0 when OOM, so user code can handle it
     (func $alloc0 (export "alloc0")
             (param $pointer_cnt i32)
@@ -56,7 +59,7 @@
             (local $init_top i32)
             (local $req_alloc_size i32)
             (local $meta_alloc_size i32)
-        (local.set $offset_addr (i32.const 4))
+        (local.set $offset_addr (call $const_addr_young_length))
 
         ;; mutable not supported yet
         (i32.ne (local.get $is_mutable) (i32.const 0))
@@ -84,23 +87,37 @@
         ;; write metadata - just length for now
         (i32.store (local.get $init_top) (local.get $meta_alloc_size))
 
-        ;; (call $log_i32 (local.get $init_top))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        ;; (call $log_i32 (local.get $alloc_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-
         ;; return data address, which is after metadata
         (return (i32.add (local.get $init_top) (i32.const 4)))
     )
+
     ;; do a small GC, e.g. young generation only
     (func $gc_fast (export "gc_fast")
     )
+
     ;; do a big GC, e.g. check all memory regions
     (func $gc_full (export "gc_full")
     )
 
-    ;; TODO @mark: make it possible to register an post-GC handler?
+    ;; some internals, perhaps mostly for testing, as they make it hard to change impl
+    (func $_get_young_size
+            (result i32)
+        (i32.load (call $const_addr_young_length))
+    )
+
+    (func $const_addr_young_length (result i32)
+        i32.const 4
+    )
+
+    ;;
+    ;; TESTS
+    ;;
 
     (func $gc_tests (export "tests")
-            (result i32)  ;; 0 if ok, 1 if fail
+        (call $test_double_data_alloc)
+    )
+
+    (func $test_double_data_alloc
 
         ;; first allocation
         (i32.ne
@@ -120,7 +137,14 @@
             unreachable
         ))
 
-        ;; no error yet
-        i32.const 0
+        ;; check young size (note pointer returned before if after metadata but before actual data)
+        (i32.ne
+            (call $_get_young_size)
+            (i32.const 28))
+        (if (then
+            (call $log_i32 (call $_get_young_size))
+            (call $log_err_code (i32.const 102))
+            unreachable
+        ))
     )
 )

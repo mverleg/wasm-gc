@@ -170,24 +170,35 @@
 
     ;; start a stack frame; can allocate with stack_alloc,
     ;; but only if doesn't live past stack_pop_to.
-    ;; Returns $frame_start_addr to pass to stack_pop_to.
+    ;; Returns $frame_ix (in words) to pass to stack_pop_to.
     (func $stack_push (export "stack_push")
             (result i32)
-        unreachable   ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (i32.load (call $addr_young_side))
     )
 
     ;; drop stack frame started with stack_alloc; assumes all dropped
-    ;; memory is unreferenced. Must provide address returned by stack_push.
+    ;; memory is unreferenced. Must provide the ix returned by stack_push.
     (func $stack_pop_to (export "stack_pop")
-            (param $frame_start_addr i32)
-        unreachable   ;;TODO @mark: TEMPORARY! REMOVE THIS!
+            (param $frame_ix i32)
+            (local $orig_size i32)
+        (local.set $orig_size (i32.load (call $addr_young_side)))
+        ;;TODO: should such safeties be disabled in production mode?
+        (if (i32.gt_u (local.get $frame_ix) (local.get $orig_size)) (then
+            ;; this must only shrink the stack, not grow
+            (call $log_err_code (i32.const 4))
+            unreachable
+        ))
+        (if (i32.lt_s (local.get $frame_ix) (i32.const 0)) (then
+            (call $log_err_code (i32.const 5))
+            unreachable
+        ))
+        (i32.store (call $addr_young_side) (local.get $frame_ix))
     )
 
-    ;; allocate memory on current stack frame; must be
-    ;; unreferenced before stack_pop_to.
-    ;; (it may be possible to group several objects into a
-    ;; single allocation, but not all of them, due to
-    ;; dynamically sized objects).
+    ;; allocate memory on current stack frame; must be unreferenced before
+    ;; stack_pop_to. (it may be possible to group several objects into a
+    ;; single allocation, but not all of them, due to dynamically sized objects).
+    ;;TODO: make a 0-returning version?
     (func $stack_alloc (export "stack_alloc")
             (param $pointer_cnt i32)
             (param $data_size_32 i32)  ;; units are 32-bit words

@@ -179,22 +179,7 @@
         (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $alloc_init)  ;; reset heap
 
-        (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        (call $alloc_init)  ;; reset heap
-
-        i32.const 0
-        (block $outer (loop $continue
-            i32.const 10
-            i32.ge_u
-            br_if $outer
-            i32.const 1
-            i32.add
-            br $continue
-        ))
-
-        (drop (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))
-        (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $test_alloc_almost_1M)
         (call $alloc_init)  ;; reset heap
     )
 
@@ -225,6 +210,19 @@
         (if (then
             (call $log_err_code (i32.const 102))
             unreachable
+        ))
+    )
+
+    (func $test_alloc_almost_1M
+            (local $i i32)
+
+        (local.set $i (i32.const 0))
+        (block $outer (loop $continue
+            (i32.ge_u (local.get $i) (i32.const 127))
+            br_if $outer
+            (drop (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            br $continue
         ))
     )
 )

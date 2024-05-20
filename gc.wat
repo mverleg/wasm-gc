@@ -109,7 +109,8 @@
             (result i32)  ;; addr
             (local $alloc_size i32)
             (local $orig_offset_addr i32)
-            (local $new_heap_size i32)
+            (local $orig_young_length i32)
+            (local $new_young_length i32)
 
         ;; mutable not supported yet
         (if (i32.ne (local.get $is_mutable) (i32.const 0)) (then
@@ -122,28 +123,22 @@
             unreachable
         ))
 
-
         ;; calculate the necessary size (words) including metadata
         (local.set $alloc_size (i32.add (i32.const 1) (i32.add (local.get $pointer_cnt) (local.get $data_size_32))))
         ;;TODO @mark: for now assume metadata is 1 word ^
 
         ;; calculate new young heap size (but don't update yet)
-        (local.set $new_heap_size (call $const_addr_young_length) (local.get $alloc_size))
+        (local.set $orig_young_length (call $const_addr_young_length))
+        (local.set $new_young_length (local.get $orig_young_length) (local.get $alloc_size))
 
         ;; check if enough memory
-        (if (i32.gt_u (local.get $new_heap_size) (call $const_young_side_max_size)) (then
+        (if (i32.gt_u (local.get $new_young_length) (call $const_young_side_max_size)) (then
             (return (i32.const 0)) ))
 
         ;; find current top of young heap addr
         (local.set $orig_offset_addr (i32.add
             (call $const_addr_young_offset)
-            (i32.mul (i32.const 4) (local.get $new_heap_size))))
-        ;;TODO @mark: or add the new allocation size to original offset?
-
-        ;; read current end-of-young-gen address
-;;        (local.set $init_top (i32.load (local.get $offset_addr)))
-;;        (i32.store (local.get $offset_addr) (i32.add
-;;                (local.get $init_top) (local.get $meta_alloc_size)))
+            (i32.mul (i32.const 4) (local.get $orig_young_length))))
 
         ;; write metadata - just length for now
         (call $write_metadata
@@ -153,7 +148,7 @@
                 (local.get $is_mutable))
 
         ;; update heap length
-        (i32.store (call $const_addr_young_length) (i32.add (call $orig_offset_addr) (i32.const 1)))
+        (i32.store (call $const_addr_young_length) (local.get $new_young_length))
 
         ;; return data address, which is after metadata
         (return (i32.add (local.get $orig_offset_addr) (i32.const 4)))
@@ -219,11 +214,10 @@
     ;; some internals, perhaps mostly for testing, as they make it hard to change impl
     ;;
 
-    ;; (func $get_young_size
-    ;;         (result i32)
-    ;;     ;;(i32.sub (i32.load (call $const_addr_young_length)) (call $const_addr_young_offset))
-    ;;     (i32.load (call $const_addr_young_length))
-    ;; )
+    (func $get_young_size
+            (result i32)
+        (i32.load (call $const_addr_young_length))
+    )
 
     (func $print_memory
         call $print_stack

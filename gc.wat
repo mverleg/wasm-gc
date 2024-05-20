@@ -169,19 +169,22 @@
     )
 
     ;; start a stack frame; can allocate with stack_alloc,
-    ;; but only if doesn't live past stack_pop.
+    ;; but only if doesn't live past stack_pop_to.
+    ;; Returns $frame_start_addr to pass to stack_pop_to.
     (func $stack_push (export "stack_push")
+            (result i32)
         unreachable   ;;TODO @mark: TEMPORARY! REMOVE THIS!
     )
 
-    ;; drop stack frame started with stack_alloc; assuming
-    ;; all memory is unreferenced.
-    (func $stack_pop (export "stack_pop")
+    ;; drop stack frame started with stack_alloc; assumes all dropped
+    ;; memory is unreferenced. Must provide address returned by stack_push.
+    (func $stack_pop_to (export "stack_pop")
+            (param $frame_start_addr i32)
         unreachable   ;;TODO @mark: TEMPORARY! REMOVE THIS!
     )
 
     ;; allocate memory on current stack frame; must be
-    ;; unreferenced before stack_pop.
+    ;; unreferenced before stack_pop_to.
     ;; (it may be possible to group several objects into a
     ;; single allocation, but not all of them, due to
     ;; dynamically sized objects).

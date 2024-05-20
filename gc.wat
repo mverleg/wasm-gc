@@ -121,7 +121,7 @@
             (param $data_size_32 i32)
             (param $is_mutable i32)
         (if (i32.gt_u (local.get $pointer_cnt) (i32.const 127)) (then (call $log_err_code (i32.const 103)) unreachable ))
-        (if (i32.gt_u (local.get $data_size_32) (i32.const 127)) (then (call $log_err_code (i32.const 103)) unreachable ))
+        (if (i32.gt_u (local.get $data_size_32) (i32.const 127)) (then (call $log_err_code (i32.const 104)) unreachable ))
 
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 2)) (local.get $pointer_cnt))
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 3)) (local.get $data_size_32))
@@ -178,8 +178,24 @@
         (call $test_double_data_alloc)
         (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $alloc_init)  ;; reset heap
+
         (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $alloc_init)  ;; reset heap
+
+        i32.const 0
+        (block $outer (loop $continue
+            i32.const 10
+            i32.ge_u
+            br_if $outer
+            i32.const 1
+            i32.add
+            br $continue
+        ))
+
+        (drop (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))
+        (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $alloc_init)  ;; reset heap
     )
 
     (func $test_double_data_alloc

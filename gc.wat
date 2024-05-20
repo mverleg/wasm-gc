@@ -98,21 +98,13 @@
             (param $is_mutable i32)
             (result i32)  ;; addr
             (local $res i32)
-        (block $alloc_ok
-            (local.set $res
-                (call $alloc0
-                    (local.get $pointer_cnt)
-                    (local.get $data_size_32)
-                    (local.get $is_mutable)))
-            (i32.eq
-                (local.get $res)
-                (i32.const 0))
-            br_if $alloc_ok
-            (return (local.get $res))
-        )
-        ;; OOM (returned 0)
-        (call $log_err_code (i32.const 1))
-        unreachable
+
+        (local.set $res (call $alloc0 (local.get $pointer_cnt) (local.get $data_size_32) (local.get $is_mutable)))
+        (if (i32.eq (local.get $res) (i32.const 0)) (then
+            (call $log_err_code (i32.const 1))
+            unreachable
+        ))
+        local.get $res
     )
 
     ;; like $alloc, but returns 0 when OOM, so user code can handle it
@@ -195,15 +187,70 @@
         (i32.store (call $addr_young_side) (local.get $frame_ix))
     )
 
+    ;; like $stack_alloc0, but traps when OOM
+    (func $stack_alloc (export "$stack_alloc")
+            (param $pointer_cnt i32)
+            (param $data_size_32 i32)  ;; units are 32-bit words
+            (result i32)  ;; addr
+            (local $res i32)
+        (local.set $res (call $stack_alloc0 (local.get $pointer_cnt) (local.get $data_size_32)))
+        (if (i32.eq (local.get $res) (i32.const 0)) (then
+            (call $log_err_code (i32.const 6))
+            unreachable
+        ))
+        local.get $res
+    )
+
     ;; allocate memory on current stack frame; must be unreferenced before
     ;; stack_pop_to. (it may be possible to group several objects into a
     ;; single allocation, but not all of them, due to dynamically sized objects).
     ;;TODO: make a 0-returning version?
-    (func $stack_alloc (export "stack_alloc")
+    (func $stack_alloc0 (export "stack_alloc0")
             (param $pointer_cnt i32)
             (param $data_size_32 i32)  ;; units are 32-bit words
             (result i32)  ;; addr
-        unreachable   ;;TODO @mark: TEMPORARY! REMOVE THIS!
+            (local $alloc_size i32)
+            (local $orig_stack_length i32)
+            (local $new_stack_length i32)
+            (local $orig_offset_addr i32)
+        ;;TODO @mark: this should mirror alloc0 except mutability
+
+        ;; pointer_cnt not supported yet
+        (if (i32.ne (local.get $pointer_cnt) (i32.const 0)) (then
+            (call $log_err_code (i32.const 3))
+            unreachable
+        ))
+
+        ;; calculate the necessary size (words) including metadata
+        (local.set $alloc_size (i32.add (i32.const 1) (i32.add (local.get $pointer_cnt) (local.get $data_size_32))))
+        ;;TODO @mark: for now assume metadata is 1 word ^
+
+        ;; calculate new stack size (but don't update yet)
+        (local.set $orig_stack_length (i32.load (call $addr_stack_length)))
+        (local.set $new_stack_length (i32.add (local.get $orig_stack_length) (local.get $alloc_size)))
+
+        ;; check if enough memory
+        (if (i32.gt_u (local.get $new_stack_length) (call $const_stack_max_size)) (then
+            (return (i32.const 0)) ))
+
+        ;; find current top of young heap addr
+        (local.set $orig_offset_addr (i32.add
+            (call $glob_stack_start_addr)
+            (i32.mul (i32.const 4) (local.get $orig_stack_length))))
+
+        ;; write metadata - just length for now
+        (call $write_metadata
+                (local.get $orig_offset_addr)
+                (local.get $pointer_cnt)
+                (local.get $data_size_32)
+                (i32.const 0))
+        ;;TODO: can skip some values
+
+        ;; update stack size length
+        (i32.store (call $addr_stack_length) (local.get $new_stack_length))
+
+        ;; return data address, which is after metadata
+        (return (i32.add (local.get $orig_offset_addr) (i32.const 4)))
     )
 
     ;; do a small GC, e.g. young generation only

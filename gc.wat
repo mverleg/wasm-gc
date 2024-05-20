@@ -76,11 +76,6 @@
     (func $glob_young_start_addr (result i32) (local $res i32)
         ;; start of stack + length of stack + currently used stack space
 
-        ;; (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        ;; (call $log_i32 (call $glob_stack_start_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        ;; (call $log_i32 (i32.mul (i32.const 4) (call $const_stack_max_size)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        ;; (call $log_i32 (i32.mul (i32.const 4) (i32.load (call $addr_young_length))))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-
         (local.set $res (i32.add
             (call $glob_stack_start_addr)
             (i32.mul (i32.const 4) (i32.add
@@ -89,12 +84,10 @@
 
         (if (i32.ne (i32.load (call $addr_young_side)) (i32.const 0)) (then
             ;; when using 'other half' of young, add one half's size
-            ;; (call $log_i32 (i32.mul (i32.const 4) (call $const_young_side_max_size)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
             (local.set $res (i32.add
                 (i32.mul (i32.const 4) (call $const_young_side_max_size))
                 (local.get $res)))
         ))
-        ;; (call $log_i32 (i32.const -2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         local.get $res
     )
 
@@ -293,14 +286,14 @@
     (func $test_double_data_alloc
 
         ;; first allocation
-        (call $log_i32 (call $alloc (i32.const 0) (i32.const 2) (i32.const 0)))
+        (drop (call $alloc (i32.const 0) (i32.const 2) (i32.const 0)))
         (if (i32.ne (call $get_young_size) (i32.const 3)) (then
             (call $log_err_code (i32.const 100))
             unreachable
         ))
 
         ;; what if we do it again
-        (call $log_i32 (call $alloc (i32.const 0) (i32.const 1) (i32.const 0)))
+        (drop (call $alloc (i32.const 0) (i32.const 1) (i32.const 0)))
         (if (i32.ne (call $get_young_size) (i32.const 5)) (then
             (call $log_err_code (i32.const 101))
             unreachable
@@ -313,9 +306,8 @@
         ;; fill almost all memory
         (local.set $i (i32.const 0))
         (block $outer (loop $continue
-            (i32.ge_u (local.get $i) (i32.const 32))
+            (i32.ge_u (local.get $i) (i32.const 128))
             br_if $outer
-            ;;TODO @mark: TEMPORARY! REMOVE THIS!(call $log_err_code (local.get $i))
             (drop (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))
             (local.set $i (i32.add (local.get $i) (i32.const 1)))
             br $continue

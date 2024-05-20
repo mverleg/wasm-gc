@@ -57,11 +57,13 @@
     (func $alloc_init (i32.store (call $const_addr_young_length) (i32.const 0)))
     (start $alloc_init)
 
+    ;; these are addresses (in bytes) but sizes at the addresses are in words
     (func $const_addr_stack_length (result i32) i32.const 4)
     (func $const_addr_young_side (result i32) i32.const 8)
     (func $const_addr_young_length (result i32) i32.const 12)
     (func $const_addr_old_length (result i32) i32.const 12)
 
+    ;; max size is in words
     (func $const_stack_max_size (result i32) i32.const 1024)
     (func $const_young_side_max_size (result i32) i32.const 16384)
     (func $const_old_heap_max_size (result i32) i32.const 0)
@@ -105,11 +107,9 @@
             (param $data_size_32 i32)  ;; units are 32-bit words
             (param $is_mutable i32)
             (result i32)  ;; addr
-            (local $offset_addr i32)
-            (local $init_top i32)
-            (local $req_alloc_size i32)
-            (local $meta_alloc_size i32)
-        (local.set $offset_addr (call $const_addr_young_length))
+            (local $alloc_size i32)
+            (local $orig_offset_addr i32)
+            (local $new_heap_size i32)
 
         ;; mutable not supported yet
         (if (i32.ne (local.get $is_mutable) (i32.const 0)) (then
@@ -122,29 +122,41 @@
             unreachable
         ))
 
-        ;; calculate the necessary size including metadata
-        (local.set $req_alloc_size (i32.mul (i32.const 4)
-                (i32.add (local.get $pointer_cnt) (local.get $data_size_32))))
-        (local.set $meta_alloc_size (i32.add (i32.const 4) (local.get $req_alloc_size)))
+
+        ;; calculate the necessary size (words) including metadata
+        (local.set $alloc_size (i32.add (i32.const 1) (i32.add (local.get $pointer_cnt) (local.get $data_size_32))))
+        ;;TODO @mark: for now assume metadata is 1 word ^
+
+        ;; calculate new young heap size (but don't update yet)
+        (local.set $new_heap_size (call $const_addr_young_length) (local.get $alloc_size))
 
         ;; check if enough memory
-        (if (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_max_size))
-                (then (return (i32.const 0)) ))
+        (if (i32.gt_u (local.get $new_heap_size) (call $const_young_side_max_size)) (then
+            (return (i32.const 0)) ))
+
+        ;; find current top of young heap addr
+        (local.set $orig_offset_addr (i32.add
+            (call $const_addr_young_offset)
+            (i32.mul (i32.const 4) (local.get $new_heap_size))))
+        ;;TODO @mark: or add the new allocation size to original offset?
 
         ;; read current end-of-young-gen address
-        (local.set $init_top (i32.load (local.get $offset_addr)))
-        (i32.store (local.get $offset_addr) (i32.add
-                (local.get $init_top) (local.get $meta_alloc_size)))
+;;        (local.set $init_top (i32.load (local.get $offset_addr)))
+;;        (i32.store (local.get $offset_addr) (i32.add
+;;                (local.get $init_top) (local.get $meta_alloc_size)))
 
         ;; write metadata - just length for now
         (call $write_metadata
-                (local.get $init_top)
+                (local.get $orig_offset_addr)
                 (local.get $pointer_cnt)
                 (local.get $data_size_32)
                 (local.get $is_mutable))
 
+        ;; update heap length
+        (i32.store (call $const_addr_young_length) (i32.add (call $orig_offset_addr) (i32.const 1)))
+
         ;; return data address, which is after metadata
-        (return (i32.add (local.get $init_top) (i32.const 4)))
+        (return (i32.add (local.get $orig_offset_addr) (i32.const 4)))
     )
 
     ;; start a stack frame; can allocate with stack_alloc,
@@ -207,11 +219,11 @@
     ;; some internals, perhaps mostly for testing, as they make it hard to change impl
     ;;
 
-    (func $get_young_size
-            (result i32)
-        ;;(i32.sub (i32.load (call $const_addr_young_length)) (call $const_addr_young_offset))
-        (i32.load (call $const_addr_young_length))
-    )
+    ;; (func $get_young_size
+    ;;         (result i32)
+    ;;     ;;(i32.sub (i32.load (call $const_addr_young_length)) (call $const_addr_young_offset))
+    ;;     (i32.load (call $const_addr_young_length))
+    ;; )
 
     (func $print_memory
         call $print_stack
@@ -266,8 +278,8 @@
     (func $test_double_data_alloc
 
         ;; first allocation
-        (if (i32.ne (call $alloc (i32.const 0) (i32.const 2) (i32.const 0)) (i32.const 32))
-        (then
+        (call $log_i32 (call $alloc (i32.const 0) (i32.const 2) (i32.const 0)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (if (i32.ne (call $alloc (i32.const 0) (i32.const 2) (i32.const 0)) (i32.const 32)) (then
             (call $log_err_code (i32.const 100))
             unreachable
         ))

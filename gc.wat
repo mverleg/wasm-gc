@@ -54,7 +54,7 @@
     (import "host" "log_i32x4" (func $log_i32x4 (param i32) (param i32) (param i32) (param i32)))
     (import "host" "log_err_code" (func $log_err_code (param i32)))
     (memory 3 3)  ;; 2x 64k
-    (func $alloc_init (i32.store (call $const_addr_young_length) (i32.const 8)))
+    (func $alloc_init (i32.store (call $const_addr_young_length) (i32.const 0)))
     (start $alloc_init)
 
     (func $const_addr_stack_length (result i32) i32.const 4)
@@ -69,8 +69,7 @@
     (func $const_addr_stack_offset (result i32) i32.const 20)
     (func $const_addr_young_offset (result i32) (local $res i32)
         (local.set $res (i32.add (call $const_stack_max_size) (call $const_addr_stack_offset)))
-        (i32.ne (call $const_addr_young_side) (i32.const 0))
-        (if (then
+        (if (i32.ne (call $const_addr_young_side) (i32.const 0)) (then
             (local.set $res (i32.add (local.get $res) (call $const_addr_young_length)))
         ))
         local.get $res
@@ -113,14 +112,12 @@
         (local.set $offset_addr (call $const_addr_young_length))
 
         ;; mutable not supported yet
-        (i32.ne (local.get $is_mutable) (i32.const 0))
-        (if (then
+        (if (i32.ne (local.get $is_mutable) (i32.const 0)) (then
             (call $log_err_code (i32.const 2))
             unreachable
         ))
         ;; pointer_cnt not supported yet
-        (i32.ne (local.get $pointer_cnt) (i32.const 0))
-        (if (then
+        (if (i32.ne (local.get $pointer_cnt) (i32.const 0)) (then
             (call $log_err_code (i32.const 3))
             unreachable
         ))
@@ -131,15 +128,8 @@
         (local.set $meta_alloc_size (i32.add (i32.const 4) (local.get $req_alloc_size)))
 
         ;; check if enough memory
-        ;;TODO should I store the size of the address of heap?
-        ;;(call $log_i32 (local.get $meta_alloc_size))
-        ;;(call $log_i32 (call $get_young_size))
-        ;;(call $log_i32 (i32.add (local.get $meta_alloc_size) (call $get_young_size)))
-        ;;(call $log_i32 (call $const_young_side_max_size))
-        ;;(call $log_i32 (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_max_size)))
-        ;;(call $log_i32 (i32.const -1))
-        (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_max_size))
-        (if (then (return (i32.const 0)) ))
+        (if (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_max_size))
+                (then (return (i32.const 0)) ))
 
         ;; read current end-of-young-gen address
         (local.set $init_top (i32.load (local.get $offset_addr)))
@@ -220,7 +210,7 @@
     (func $get_young_size
             (result i32)
         ;;(i32.sub (i32.load (call $const_addr_young_length)) (call $const_addr_young_offset))
-        call $const_addr_young_length
+        (i32.load (call $const_addr_young_length))
     )
 
     (func $print_memory
@@ -256,8 +246,6 @@
     ;; TESTS
     ;;
 
-    ;;(func $fail (param $code i32) (call $log_err_code (i32.const 107)) unreachable)
-
     (func $gc_tests (export "tests")
         (call $test_empty_heap)
 
@@ -271,35 +259,27 @@
 
     (func $test_empty_heap
         (call $alloc_init)  ;; reset heap
-        (i32.ne (call $get_young_size) (i32.const 0))
-        (if (then (call $log_err_code (i32.const 107)) unreachable))
+        (if (i32.ne (call $get_young_size) (i32.const 0))
+            (then (call $log_err_code (i32.const 107)) unreachable))
     )
 
     (func $test_double_data_alloc
 
         ;; first allocation
-        (i32.ne
-            (call $alloc (i32.const 0) (i32.const 2) (i32.const 0))
-            (i32.const 12))
-        (if (then
+        (if (i32.ne (call $alloc (i32.const 0) (i32.const 2) (i32.const 0)) (i32.const 32))
+        (then
             (call $log_err_code (i32.const 100))
             unreachable
         ))
 
         ;; what if we do it again
-        (i32.ne
-            (call $alloc (i32.const 0) (i32.const 1) (i32.const 0))
-            (i32.const 24))
-        (if (then
+        (if (i32.ne (call $alloc (i32.const 0) (i32.const 1) (i32.const 0)) (i32.const 24)) (then
             (call $log_err_code (i32.const 101))
             unreachable
         ))
 
         ;; check young size (note pointer returned before if after metadata but before actual data)
-        (i32.ne
-            (call $get_young_size)
-            (i32.const 20))
-        (if (then
+        (if (i32.ne (call $get_young_size) (i32.const 20)) (then
             (call $log_err_code (i32.const 102))
             unreachable
         ))
@@ -321,13 +301,13 @@
 
         ;; test that alloc fails
         (call $alloc0 (i32.const 0) (i32.const 127) (i32.const 0))
-        (i32.ne (i32.const 0))
-        (if (then (call $log_err_code (i32.const 105)) unreachable))
+        (if (i32.ne (i32.const 0)) (then
+            (call $log_err_code (i32.const 105)) unreachable))
 
         ;; test that GC cleans memory
         call $gc_full
         call $alloc_init  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        (i32.ne (call $get_young_size) (i32.const 0))
-        (if (then (call $log_err_code (i32.const 106)) unreachable))
+        (if (i32.ne (call $get_young_size) (i32.const 0)) (then
+            (call $log_err_code (i32.const 106)) unreachable))
     )
 )

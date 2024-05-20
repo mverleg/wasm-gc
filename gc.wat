@@ -1,5 +1,5 @@
-
 ;; This wasm GC makes some important assumptions:
+
 ;; - allocations are N pointers followed by M bytes if non-pointer data
         ;;TODO @mark: how does this work with arrays? ^
 ;; - code only reads/writes allocated memory, and only while reachable from either roots or allocated pointers
@@ -42,7 +42,7 @@
     (func $alloc_init (i32.store (call $const_addr_young_length) (i32.const 8)))
     (start $alloc_init)
 
-    (func $const_side_size (result i32) i32.const 16384)
+    (func $const_young_side_size (result i32) i32.const 16384)
     (func $const_addr_young_offset (result i32) i32.const 8)
     (func $const_addr_young_length (result i32) i32.const 4)
 
@@ -99,6 +99,17 @@
         (local.set $req_alloc_size (i32.mul (i32.const 4)
                 (i32.add (local.get $pointer_cnt) (local.get $data_size_32))))
         (local.set $meta_alloc_size (i32.add (i32.const 4) (local.get $req_alloc_size)))
+
+        ;; check if enough memory
+        ;;TODO should I store the size of the address of heap?
+        (call $log_i32 (local.get $meta_alloc_size))
+        (call $log_i32 (call $get_young_size))
+        (call $log_i32 (i32.add (local.get $meta_alloc_size) (call $get_young_size)))
+        (call $log_i32 (call $const_young_side_size))
+        (call $log_i32 (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_size)))
+        (call $log_i32 (i32.const -1))
+        (i32.gt_u (i32.add (local.get $meta_alloc_size) (call $get_young_size)) (call $const_young_side_size))
+        (if (then (return (i32.const 0)) ))
 
         ;; read current end-of-young-gen address
         (local.set $init_top (i32.load (local.get $offset_addr)))
@@ -186,7 +197,7 @@
         (call $print_heap)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $alloc_init)  ;; reset heap
 
-        (call $test_alloc_almost_1M_and_GC)
+        (call $test_alloc_full_heap_GC)
         (call $alloc_init)  ;; reset heap
     )
 
@@ -226,13 +237,13 @@
         ))
     )
 
-    (func $test_alloc_almost_1M_and_GC
+    (func $test_alloc_full_heap_GC
             (local $i i32)
 
         ;; fill almost all memory
         (local.set $i (i32.const 0))
         (block $outer (loop $continue
-            (i32.ge_u (local.get $i) (i32.const 127))
+            (i32.ge_u (local.get $i) (i32.const 30))
             br_if $outer
             (drop (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))
             (local.set $i (i32.add (local.get $i) (i32.const 1)))
@@ -240,7 +251,7 @@
         ))
 
         ;; test that alloc fails
-        (call $log_i32 (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (call $alloc0 (i32.const 0) (i32.const 127) (i32.const 0)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $alloc (i32.const 0) (i32.const 127) (i32.const 0))
         (i32.ne (i32.const 0))
         (if (then (call $log_err_code (i32.const 105)) unreachable))

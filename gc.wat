@@ -119,6 +119,9 @@
             (param $pointer_cnt i32)
             (param $data_size_32 i32)
             (param $is_mutable i32)
+        (if (i32.gt_u (local.get $pointer_cnt) (i32.const 127)) (then (call $log_err_code (i32.const 103)) unreachable ))
+        (if (i32.gt_u (local.get $data_size_32) (i32.const 127)) (then (call $log_err_code (i32.const 103)) unreachable ))
+
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 2)) (local.get $pointer_cnt))
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 3)) (local.get $data_size_32))
     )
@@ -142,6 +145,20 @@
     (func $get_young_size
             (result i32)
         (i32.load (call $const_addr_young_length))
+    )
+
+    (func $print_heap
+            (local $upto i32)
+        (local.set $upto (i32.load (call $const_addr_young_length)))
+        (call $log_i32 (local.get $upto))
+        i32.const 0
+        (block $outer (loop
+            local.get $upto
+            i32.lt_u
+            br_if $outer
+            i32.add (i32.const 1)
+        ))
+        drop
     )
 
     (func $const_addr_young_length (result i32)
@@ -182,7 +199,6 @@
             (call $get_young_size)
             (i32.const 28))
         (if (then
-            (call $log_i32 (call $get_young_size))
             (call $log_err_code (i32.const 102))
             unreachable
         ))

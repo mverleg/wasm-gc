@@ -8,20 +8,31 @@
 ;; - most data is immutable, and only mutable data can mutate
 ;;   (this is important for e.g. the assumption that old gen cannot point to young gen)
 ;; - all allocations are multiples of 32 bytes
+;; - for now (can be lifted): at most 128 pointers and words of data
 ;; priorities for the GC are:
 ;; - small size
 ;; - easy to configure
 ;; - decent performance in common cases
 ;;   performance encompasses everything: allocation, GC, memory locality, etc
 ;;TODO @mark: ^ is all this still correct?
+;;
+;; Metadata:
+;; - pointer cnt
+;; - data word size
+;; - is mutable
+;; - generation count
+;; - is array? length?
+;; Some of this is per-type instead of per-object, but might still be efficient to duplicate
 
+;; TODO how to find roots?
+;; TODO how to handle arrays (detect pointers)
 ;; TODO how to handle 0-byte allocations? is there reference equality anywhere?
 ;; TODO have some post-GC handler?
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
     (import "host" "log_err_code" (func $log_err_code (param i32)))
-    (memory 1)
+    (memory 1 1)  ;; 64k
     (func $alloc_init (i32.store (call $const_addr_young_length) (i32.const 8)))
     (start $alloc_init)
 
@@ -99,7 +110,26 @@
     (func $gc_full (export "gc_full")
     )
 
+    ;;
     ;; some internals, perhaps mostly for testing, as they make it hard to change impl
+    ;;
+
+    (func $write_metadata
+            (param $meta_addr i32)
+            (param $pointer_cnt i32)
+            (param $data_size_32 i32)
+            (param $is_mutable i32)
+
+    )
+
+    (func $read_metadata_pointer_cnt
+            (param $meta_addr i32)
+            (result i32)
+;;        (i32.load $meta_addr)
+;;        i32.reinterpret_i8
+        i32.const 0  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+    )
+
     (func $_get_young_size
             (result i32)
         (i32.load (call $const_addr_young_length))

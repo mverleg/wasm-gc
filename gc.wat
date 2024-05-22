@@ -354,6 +354,8 @@
         (call $alloc_init)  ;; reset heap
 
         (call $test_double_stack_alloc)
+        ;;TODO @mark: not printing?
+        (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         (call $test_alloc_full_heap_GC)
         (call $alloc_init)  ;; reset heap
@@ -388,33 +390,23 @@
 
         ;; frames
         (local.set $top1 (call $stack_push))
-        (call $log_i32 (local.get $top1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (local.set $top2 (call $stack_push))
-        (call $log_i32 (local.get $top2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $stack_pop_to (local.get $top2))
         (local.set $top2 (call $stack_push))
-        (call $log_i32 (local.get $top2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; first allocation
         (drop (call $stack_alloc (i32.const 0) (i32.const 2)))
-        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (if (i32.ne (call $get_stack_size) (i32.const 3)) (then
             (call $log_err_code (i32.const 108))
             unreachable
         ))
 
         ;; prev frame
-        (call $log_i32 (local.get $top2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $stack_pop_to (local.get $top2))
-        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; what if we do it again
         (drop (call $stack_alloc (i32.const 0) (i32.const 1)))
-        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (drop (call $stack_alloc (i32.const 0) (i32.const 8)))
-        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (if (i32.ne (call $get_stack_size) (i32.const 11)) (then
             (call $log_err_code (i32.const 109))
             unreachable
@@ -422,7 +414,6 @@
 
         ;; empty stack
         (call $stack_pop_to (local.get $top1))
-        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (if (i32.ne (call $get_stack_size) (i32.const 0)) (then
             (call $log_err_code (i32.const 110))
             unreachable

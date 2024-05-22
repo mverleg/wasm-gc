@@ -184,7 +184,7 @@
             (call $log_err_code (i32.const 5))
             unreachable
         ))
-        (i32.store (call $addr_young_side) (local.get $frame_ix))
+        (i32.store (call $addr_stack_length) (local.get $frame_ix))
     )
 
     ;; like $stack_alloc0, but traps when OOM
@@ -388,18 +388,27 @@
 
         ;; frames
         (local.set $top1 (call $stack_push))
+        (call $log_i32 (local.get $top1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (local.set $top2 (call $stack_push))
+        (call $log_i32 (local.get $top2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $stack_pop_to (local.get $top2))
         (local.set $top2 (call $stack_push))
+        (call $log_i32 (local.get $top2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; first allocation
         (drop (call $stack_alloc (i32.const 0) (i32.const 2)))
+        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (if (i32.ne (call $get_stack_size) (i32.const 3)) (then
             (call $log_err_code (i32.const 108))
             unreachable
         ))
 
+        ;; prev frame
+        (call $log_i32 (local.get $top2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $stack_pop_to (local.get $top2))
+        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; what if we do it again
         (drop (call $stack_alloc (i32.const 0) (i32.const 1)))

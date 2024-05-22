@@ -294,6 +294,11 @@
         (i32.load (call $addr_young_length))
     )
 
+    (func $get_stack_size
+            (result i32)
+        (i32.load (call $addr_stack_length))
+    )
+
     (func $print_memory
         call $print_stack
         call $print_heap
@@ -348,6 +353,8 @@
         (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $alloc_init)  ;; reset heap
 
+        (call $test_double_stack_alloc)
+
         (call $test_alloc_full_heap_GC)
         (call $alloc_init)  ;; reset heap
     )
@@ -371,6 +378,44 @@
         (drop (call $alloc (i32.const 0) (i32.const 1) (i32.const 0)))
         (if (i32.ne (call $get_young_size) (i32.const 5)) (then
             (call $log_err_code (i32.const 101))
+            unreachable
+        ))
+    )
+
+    (func $test_double_stack_alloc
+            (local $top1 i32)
+            (local $top2 i32)
+
+        ;; frames
+        (local.set $top1 (call $stack_push))
+        (local.set $top2 (call $stack_push))
+        (call $stack_pop_to (local.get $top2))
+        (local.set $top2 (call $stack_push))
+
+        ;; first allocation
+        (drop (call $stack_alloc (i32.const 0) (i32.const 2)))
+        (if (i32.ne (call $get_stack_size) (i32.const 3)) (then
+            (call $log_err_code (i32.const 108))
+            unreachable
+        ))
+
+        (call $stack_pop_to (local.get $top2))
+
+        ;; what if we do it again
+        (drop (call $stack_alloc (i32.const 0) (i32.const 1)))
+        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (drop (call $stack_alloc (i32.const 0) (i32.const 8)))
+        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (if (i32.ne (call $get_stack_size) (i32.const 11)) (then
+            (call $log_err_code (i32.const 109))
+            unreachable
+        ))
+
+        ;; empty stack
+        (call $stack_pop_to (local.get $top1))
+        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (if (i32.ne (call $get_stack_size) (i32.const 0)) (then
+            (call $log_err_code (i32.const 110))
             unreachable
         ))
     )

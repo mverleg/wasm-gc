@@ -268,23 +268,25 @@
             (param $data_size_32 i32)
             (param $pointers_mutable i32)
             (local $flags i32)
+
+        ;; sizes
         (if (i32.gt_u (local.get $pointer_cnt) (i32.const 127)) (then (call $log_err_code (i32.const 7)) unreachable ))
         (if (i32.gt_u (local.get $data_size_32) (i32.const 127)) (then (call $log_err_code (i32.const 8)) unreachable ))
 
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 2)) (local.get $pointer_cnt))
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 3)) (local.get $data_size_32))
 
+        ;; flags
         (local.set $flags (i32.const 0))
 
+        ;; first bit of this byte is for GC flag
         (if (i32.ne (local.get $pointers_mutable) (i32.const 0)) (then
                 (local.set $flags (i32.or (local.get $flags) (i32.const 2)))))
-        (call $log_i32 (i32.const -1))
-        (call $log_i32 (local.get $flags))
-        (call $log_i32 (call $read_metadata_pointers_mutable (local.get $meta_addr)))
 
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 1)) (local.get $flags))
 
-        (call $log_i32 (call $read_metadata_pointers_mutable (local.get $meta_addr)))
+        ;; type, see $read_metadata_type
+        (i32.store8 (local.get $meta_addr) (i32.const 1))
     )
 
     (func $write_metadata_stack
@@ -310,6 +312,14 @@
             (param $meta_addr i32)
             (result i32)
         (i32.load8_u (i32.add (local.get $meta_addr) (i32.const 3)))
+    )
+
+    ;; only for heap, not stack
+    ;; type (1=struct, 2=array, 127=GC-redirect)
+    (func $read_metadata_type
+            (param $meta_addr i32)
+            (result i32)
+        (i32.load8_u (local.get $meta_addr))
     )
 
     ;; only for heap, not stack

@@ -277,10 +277,14 @@
         (local.set $flags (i32.const 0))
 
         (if (i32.ne (local.get $pointers_mutable) (i32.const 0)) (then
-                (local.set $flags (i32.or (local.get $flags) (i32.const 1)))))
+                (local.set $flags (i32.or (local.get $flags) (i32.const 2)))))
+        (call $log_i32 (i32.const -1))
         (call $log_i32 (local.get $flags))
+        (call $log_i32 (call $read_metadata_pointers_mutable (local.get $meta_addr)))
 
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 1)) (local.get $flags))
+
+        (call $log_i32 (call $read_metadata_pointers_mutable (local.get $meta_addr)))
     )
 
     (func $write_metadata_stack
@@ -306,6 +310,16 @@
             (param $meta_addr i32)
             (result i32)
         (i32.load8_u (i32.add (local.get $meta_addr) (i32.const 3)))
+    )
+
+    ;; only for heap, not stack
+    (func $read_metadata_pointers_mutable
+            (param $meta_addr i32)
+            (result i32)
+        (i32.ne (i32.const 0)
+            (i32.and
+                (i32.load8_u (i32.add (local.get $meta_addr) (i32.const 1)))
+                (i32.const 2)))
     )
 
     ;;

@@ -307,9 +307,13 @@
     (func $print_stack
             (local $i i32)
             (local $upto i32)
-        (local.set $upto (i32.load (call $addr_stack_length)))
         (local.set $i (i32.load (call $glob_stack_start_addr)))
+        (local.set $upto (i32.add (local.get $i) (i32.mul (i32.const 4) (call $get_stack_size))))
+        (call $log_i32 (local.get $i))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (local.get $upto))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (block $outer (loop $continue
+            (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
             (i32.ge_u (local.get $i) (local.get $upto))
             br_if $outer
             (call $log_i32x5
@@ -326,8 +330,8 @@
     (func $print_heap
             (local $i i32)
             (local $upto i32)
-        (local.set $upto (i32.load (call $addr_young_length)))
         (local.set $i (i32.load (call $glob_young_start_addr)))
+        (local.set $upto (i32.add (local.get $i) (call $get_young_size)))
         (block $outer (loop $continue
             (i32.ge_u (local.get $i) (local.get $upto))
             br_if $outer
@@ -418,6 +422,10 @@
             (call $log_err_code (i32.const 110))
             unreachable
         ))
+
+        ;; leave some data for heap test
+        (local.set $top1 (call $stack_push))
+        (drop (call $stack_alloc (i32.const 0) (i32.const 2)))
     )
 
     (func $test_alloc_full_heap_GC

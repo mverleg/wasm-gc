@@ -34,11 +34,12 @@
 ;; Metadata:
 ;; - pointer cnt
 ;; - data word size
-;; - is mutable
-;; - reachable in current GC
-;; - generation count
-;; - is redirect in current GC
 ;; - is array? length?
+;; - only for heap, not stack:
+;;   - are the pointers mutable
+;;   - reachable in current GC
+;;   - generation count
+;;   - is redirect in current GC
 ;; Some of this is per-type instead of per-object, but might still be efficient to duplicate
 
 ;; TODO switch to globals https://augustus-pash.gitbook.io/wasm/types/globals
@@ -95,11 +96,11 @@
     (func $alloc (export "alloc")
             (param $pointer_cnt i32)
             (param $data_size_32 i32)  ;; units are 32-bit words
-            (param $is_mutable i32)
+            (param $pointers_mutable i32)
             (result i32)  ;; addr
             (local $res i32)
 
-        (local.set $res (call $alloc0 (local.get $pointer_cnt) (local.get $data_size_32) (local.get $is_mutable)))
+        (local.set $res (call $alloc0 (local.get $pointer_cnt) (local.get $data_size_32) (local.get $pointers_mutable)))
         (if (i32.eq (local.get $res) (i32.const 0)) (then
             (call $log_err_code (i32.const 1))
             unreachable
@@ -111,7 +112,7 @@
     (func $alloc0 (export "alloc0")
             (param $pointer_cnt i32)
             (param $data_size_32 i32)  ;; units are 32-bit words
-            (param $is_mutable i32)
+            (param $pointers_mutable i32)
             (result i32)  ;; addr
             (local $alloc_size i32)
             (local $orig_young_length i32)
@@ -119,7 +120,7 @@
             (local $orig_offset_addr i32)
 
         ;; mutable not supported yet
-        (if (i32.ne (local.get $is_mutable) (i32.const 0)) (then
+        (if (i32.ne (local.get $pointers_mutable) (i32.const 0)) (then
             (call $log_err_code (i32.const 2))
             unreachable
         ))
@@ -146,12 +147,13 @@
             (call $glob_young_start_addr)
             (i32.mul (i32.const 4) (local.get $orig_young_length))))
 
+        (local.set $pointers_mutable (i32.const 1)) ;;TODO @mark: TEMPORARY! REMOVE THIS!
         ;; write metadata - just length for now
-        (call $write_metadata
+        (call $write_metadata_heap
                 (local.get $orig_offset_addr)
                 (local.get $pointer_cnt)
                 (local.get $data_size_32)
-                (local.get $is_mutable))
+                (local.get $pointers_mutable))
 
         ;; update heap length
         (i32.store (call $addr_young_length) (local.get $new_young_length))
@@ -239,11 +241,10 @@
             (i32.mul (i32.const 4) (local.get $orig_stack_length))))
 
         ;; write metadata - just length for now
-        (call $write_metadata
+        (call $write_metadata_stack
                 (local.get $orig_offset_addr)
                 (local.get $pointer_cnt)
-                (local.get $data_size_32)
-                (i32.const 0))
+                (local.get $data_size_32))
         ;;TODO: can skip some values
 
         ;; update stack size length
@@ -261,24 +262,46 @@
     (func $gc_full (export "gc_full")
     )
 
-    (func $write_metadata
+    (func $write_metadata_heap
             (param $meta_addr i32)
             (param $pointer_cnt i32)
             (param $data_size_32 i32)
-            (param $is_mutable i32)
-        (if (i32.gt_u (local.get $pointer_cnt) (i32.const 127)) (then (call $log_err_code (i32.const 103)) unreachable ))
-        (if (i32.gt_u (local.get $data_size_32) (i32.const 127)) (then (call $log_err_code (i32.const 104)) unreachable ))
+            (param $pointers_mutable i32)
+            (local $flags i32)
+        (if (i32.gt_u (local.get $pointer_cnt) (i32.const 127)) (then (call $log_err_code (i32.const 7)) unreachable ))
+        (if (i32.gt_u (local.get $data_size_32) (i32.const 127)) (then (call $log_err_code (i32.const 8)) unreachable ))
+
+        (i32.store8 (i32.add (local.get $meta_addr) (i32.const 2)) (local.get $pointer_cnt))
+        (i32.store8 (i32.add (local.get $meta_addr) (i32.const 3)) (local.get $data_size_32))
+
+        (local.set $flags (i32.const 0))
+
+        (if (i32.ne (local.get $pointers_mutable) (i32.const 0)) (then
+                (local.set $flags (i32.or (local.get $flags) (i32.const 1)))))
+        (call $log_i32 (local.get $flags))
+
+        (i32.store8 (i32.add (local.get $meta_addr) (i32.const 1)) (local.get $flags))
+    )
+
+    (func $write_metadata_stack
+            (param $meta_addr i32)
+            (param $pointer_cnt i32)
+            (param $data_size_32 i32)
+        (if (i32.gt_u (local.get $pointer_cnt) (i32.const 127)) (then (call $log_err_code (i32.const 9)) unreachable ))
+        (if (i32.gt_u (local.get $data_size_32) (i32.const 127)) (then (call $log_err_code (i32.const 10)) unreachable ))
 
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 2)) (local.get $pointer_cnt))
         (i32.store8 (i32.add (local.get $meta_addr) (i32.const 3)) (local.get $data_size_32))
     )
 
+    ;; same for stack and heap
     (func $read_metadata_pointer_cnt
             (param $meta_addr i32)
             (result i32)
         (i32.load8_u (i32.add (local.get $meta_addr) (i32.const 2)))
     )
 
+    ;; same for stack and heap
     (func $read_metadata_data_word_cnt
             (param $meta_addr i32)
             (result i32)

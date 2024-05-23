@@ -307,18 +307,15 @@
     (func $print_stack
             (local $i i32)
             (local $p i32)
+            (local $start i32)
             (local $upto i32)
-        (local.set $i (i32.const 0))
+        (local.set $start (call $glob_stack_start_addr))
         (local.set $upto (i32.mul (i32.const 4) (call $get_stack_size)))
-;;        (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-;;        (call $log_i32 (local.get $i))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-;;        (call $log_i32 (call $get_stack_size))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-;;        (call $log_i32 (local.get $upto))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (local.set $i (i32.const 0))
         (block $outer (loop $continue
-;;            (call $log_i32 (i32.const -2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
             (i32.ge_u (local.get $i) (local.get $upto))
             br_if $outer
-            (local.set $p (i32.add (local.get $i) (call $glob_stack_start_addr)))
+            (local.set $p (i32.add (local.get $i) (local.get $start)))
             (call $log_i32x5
                     (i32.div_s (local.get $i) (i32.const -4))
                     (i32.load8_u (i32.add (local.get $p) (i32.const 0)))
@@ -332,18 +329,22 @@
 
     (func $print_heap
             (local $i i32)
+            (local $p i32)
+            (local $start i32)
             (local $upto i32)
-        (local.set $i (i32.load (call $glob_young_start_addr)))
-        (local.set $upto (i32.add (local.get $i) (call $get_young_size)))
+        (local.set $start (call $glob_young_start_addr))
+        (local.set $upto (i32.mul (i32.const 4) (call $get_young_size)))
+        (local.set $i (i32.const 0))
         (block $outer (loop $continue
             (i32.ge_u (local.get $i) (local.get $upto))
             br_if $outer
+            (local.set $p (i32.add (local.get $i) (local.get $start)))
             (call $log_i32x5
                     (i32.div_s (local.get $i) (i32.const 4))
-                    (i32.load8_u (i32.add (local.get $i) (i32.const 0)))
-                    (i32.load8_u (i32.add (local.get $i) (i32.const 1)))
-                    (i32.load8_u (i32.add (local.get $i) (i32.const 2)))
-                    (i32.load8_u (i32.add (local.get $i) (i32.const 3))))
+                    (i32.load8_u (i32.add (local.get $p) (i32.const 0)))
+                    (i32.load8_u (i32.add (local.get $p) (i32.const 1)))
+                    (i32.load8_u (i32.add (local.get $p) (i32.const 2)))
+                    (i32.load8_u (i32.add (local.get $p) (i32.const 3))))
             (local.set $i (i32.add (local.get $i) (i32.const 4)))
             (br $continue)
         ))

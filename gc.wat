@@ -219,7 +219,7 @@
 
         ;; pointer_cnt not supported yet
         (if (i32.ne (local.get $pointer_cnt) (i32.const 0)) (then
-            (call $log_err_code (i32.const 3))
+            (call $log_err_code (i32.const 12))
             unreachable
         ))
 
@@ -319,7 +319,15 @@
     (func $read_metadata_type
             (param $meta_addr i32)
             (result i32)
-        (i32.load8_u (local.get $meta_addr))
+            (local $res i32)
+        (local.set $res (i32.load8_u (local.get $meta_addr)))
+        ;; check in debug mode only:
+        (if (i32.and (i32.ne (local.get $res) (i32.const 1))
+                (i32.and (i32.ne (local.get $res) (i32.const 2))
+                    (i32.ne (local.get $res) (i32.const 127)))) (then
+            (call $log_err_code (i32.const 11)) unreachable
+        ))
+        local.get $res
     )
 
     ;; only for heap, not stack

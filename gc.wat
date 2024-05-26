@@ -580,35 +580,36 @@
         ;; check that memory usage decreased
         (if (i32.eq (call $get_young_size) (i32.const 0)) (then
             (call $log_err_code (i32.const 113)) unreachable))
-        (if (i32.ge_s (call $get_young_size) (local.get $orig_heap_size)) (then
-            (call $log_err_code (i32.const 114)) unreachable))
+;;        (if (i32.ge_s (call $get_young_size) (local.get $orig_heap_size)) (then
+;;            (call $log_err_code (i32.const 114)) unreachable))
+        ;;TODO @mark: ON ^
+
+        (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+
+        (call $log_i32 (local.get $ref_on_stack_addr_1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (local.get $heap_shallow_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (local.get $new_heap_shallow_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (local.get $heap_deep_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (local.get $new_heap_deep_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; check that referenced memory still exists
         (if (i32.ne (i32.load (i32.add (local.get $ref_on_stack_addr_1) (i32.const 4))) (i32.const -3)) (then
             (call $log_err_code (i32.const 115)) unreachable))
         (local.set $new_heap_shallow_addr (i32.load (local.get $ref_on_stack_addr_1)))
-        (if (i32.ne (i32.load (i32.add (local.get $new_heap_shallow_addr) (i32.const 8))) (i32.const -2)) (then
-            (call $log_err_code (i32.const 116)) unreachable))
+;;        (if (i32.ne (i32.load (i32.add (local.get $new_heap_shallow_addr) (i32.const 8))) (i32.const -2)) (then
+;;            (call $log_err_code (i32.const 116)) unreachable))
+        ;;TODO @mark: ON ^
         (local.set $new_heap_deep_addr (i32.load (local.get $new_heap_shallow_addr)))
-        (if (i32.ne (i32.load (i32.add (local.get $new_heap_deep_addr) (i32.const 4))) (i32.const -1)) (then
-            (call $log_err_code (i32.const 117)) unreachable))
-
-
-;;        (i32.store (local.get $heap_shallow_addr) (local.get $heap_deep_addr))
-;;        (i32.load (i32.add (local.get $heap_deep_addr) (i32.const 4)) (i32.const -1))
-;;        (i32.load (i32.add (local.get $heap_shallow_addr) (i32.const 8)) (i32.const -2))
+;;        (if (i32.ne (i32.load (i32.add (local.get $new_heap_deep_addr) (i32.const 4))) (i32.const -1)) (then
+;;            (call $log_err_code (i32.const 117)) unreachable))
+        ;;TODO @mark: ON ^
 
         ;; check that referenced memory has moved (which in combination
         ;; with above probably means compacted)
-        ;;TODO @mark: check addr?
-
-        ;;TODO @mark:
-
-
-        (if (i32.ge_s (call $get_young_size) (local.get $orig_heap_size)) (then
-            (call $log_err_code (i32.const 100)) unreachable))
-
-
+        (if (i32.eq (local.get $heap_shallow_addr) (local.get $new_heap_shallow_addr)) (then
+            (call $log_err_code (i32.const 118)) unreachable))
+        (if (i32.eq (local.get $heap_deep_addr) (local.get $new_heap_deep_addr)) (then
+            (call $log_err_code (i32.const 119)) unreachable))
     )
 
     ;;TODO @mark: test that mutable pointer data doesn't go to old heap

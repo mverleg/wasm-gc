@@ -42,8 +42,7 @@
 ;;   - is redirect in current GC
 ;; Some of this is per-type instead of per-object, but might still be efficient to duplicate
 
-;; TODO switch to globals https://augustus-pash.gitbook.io/wasm/types/globals
-;; TODO how to find roots?
+;; TODO zero all pointers on alloc, to prevent old data being used if GC triggers before it's initialized
 ;; TODO how to handle arrays (detect pointers)
 ;; TODO how to handle 0-byte allocations? is there reference equality anywhere?
 ;; TODO have some post-GC handler?
@@ -205,12 +204,6 @@
             (local $new_stack_length i32)
             (local $orig_offset_addr i32)
         ;;TODO @mark: this should mirror alloc0 except mutability
-
-        ;; pointer_cnt not supported yet
-        (if (i32.ne (local.get $pointer_cnt) (i32.const 0)) (then
-            (call $log_err_code (i32.const 12))
-            unreachable
-        ))
 
         ;; calculate the necessary size (words) including metadata
         (local.set $alloc_size (i32.add (i32.const 1) (i32.add (local.get $pointer_cnt) (local.get $data_size_32))))
@@ -540,21 +533,41 @@
 
     (func $test_compact_alive_in_full_GC
             (local $orig_heap_size i32)
+            (local $stack_top i32)
             (local $orig_heap_obj_addr i32)
-            (local $ref_on_stack_addr i32)
+            (local $ref_on_stack_addr_1 i32)
+            (local $ref_on_stack_addr_2 i32)
+            (local $ref_on_stack_addr_3 i32)
+            (local $heap_selfref_addr i32)
+            (local $heap_popped_addr i32)
+            (local $heap_shallow_addr i32)
+            (local $heap_deep_addr i32)
 
         ;; fill some unreferences heap memory
+        (local.set $heap_selfref_addr (call $alloc (i32.const 0) (i32.const 2) (i32.const 5)))
+        (i32.store (local.get $heap_selfref_addr) (local.get $heap_selfref_addr))
+        (local.set $heap_popped_addr (call $alloc (i32.const 0) (i32.const 1) (i32.const 5)))
+        (i32.store (local.get $heap_popped_addr) (local.get $heap_popped_addr))
 
         ;; fill some more heap memory that we'll reference
+        (local.set $heap_deep_addr (call $alloc (i32.const 0) (i32.const 1) (i32.const 3)))
+        (local.set $heap_shallow_addr (call $alloc (i32.const 0) (i32.const 2) (i32.const 1)))
+        (i32.store (local.get $heap_shallow_addr) (local.get $heap_deep_addr))
+        (i32.store (i32.add (local.get $heap_shallow_addr) (i32.const 4)) (local.get $heap_deep_addr))
 
-        ;; add references to some heap memory
+        ;; add some references from the stack:
+        ;;; reference to heap
         (drop (call $stack_push))
-        (drop (call $alloc_stack (i32.const 0) (i32.const 127)))
-        (drop (call $stack_push))
-        (drop (call $alloc_stack (i32.const 0) (i32.const 3)))
-        (drop (call $alloc_stack (i32.const 0) (i32.const 50)))
-        (local.set $orig_stack_size (call $get_stack_size))
-        ;;TODO @mark:
+        (local.set $ref_on_stack_addr_1 (call $alloc_stack (i32.const 1) (i32.const 10)))
+        (i32.store (local.get $ref_on_stack_addr_1) (local.get $heap_deep_addr))
+        ;;; will be popped before GC
+        (local.set $stack_top (call $stack_push))
+        (local.set $ref_on_stack_addr_2 (call $alloc_stack (i32.const 1) (i32.const 5)))
+        (i32.store (local.get $ref_on_stack_addr_2) (local.get $heap_popped_addr))
+        ;;; reference to stack
+        (call $stack_pop_to (local.get $stack_top))
+        (local.set $ref_on_stack_addr_3 (call $alloc_stack (i32.const 1) (i32.const 8)))
+        (i32.store (local.get $ref_on_stack_addr_3) (local.get $ref_on_stack_addr_1))
 
         ;; run GC
         call $gc_full
@@ -565,26 +578,6 @@
 
         ;; check that referenced memory has been compacted
 
-
-        (local.set $i (i32.const 0))
-        (block $outer (loop $continue
-            (i32.ge_u (local.get $i) (i32.const 128))
-            br_if $outer
-            (drop (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))
-            (local.set $i (i32.add (local.get $i) (i32.const 1)))
-            br $continue
-        ))
-
-        ;; test that alloc fails
-        (call $alloc0 (i32.const 0) (i32.const 127) (i32.const 0))
-        (if (i32.ne (i32.const 0)) (then
-        (call $log_err_code (i32.const 105)) unreachable))
-
-        ;; test that GC cleans memory
-        call $gc_full
-        call $alloc_init  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        (if (i32.ne (call $get_young_size) (i32.const 0)) (then
-                    (call $log_err_code (i32.const 106)) unreachable))
     )
 
     ;;TODO @mark: test that mutable pointer data doesn't go to old heap

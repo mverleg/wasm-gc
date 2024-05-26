@@ -534,7 +534,6 @@
     (func $test_compact_alive_in_full_GC
             (local $orig_heap_size i32)
             (local $stack_top i32)
-            (local $orig_heap_obj_addr i32)
             (local $ref_on_stack_addr_1 i32)
             (local $ref_on_stack_addr_2 i32)
             (local $ref_on_stack_addr_3 i32)
@@ -542,6 +541,8 @@
             (local $heap_popped_addr i32)
             (local $heap_shallow_addr i32)
             (local $heap_deep_addr i32)
+            (local $new_heap_shallow_addr i32)
+            (local $new_heap_deep_addr i32)
 
         ;; fill some unreferences heap memory
         (local.set $heap_selfref_addr (call $alloc (i32.const 0) (i32.const 2) (i32.const 5)))
@@ -551,15 +552,18 @@
 
         ;; fill some more heap memory that we'll reference
         (local.set $heap_deep_addr (call $alloc (i32.const 0) (i32.const 1) (i32.const 3)))
+        (i32.store (i32.add (local.get $heap_deep_addr) (i32.const 4)) (i32.const -1))
         (local.set $heap_shallow_addr (call $alloc (i32.const 0) (i32.const 2) (i32.const 1)))
         (i32.store (local.get $heap_shallow_addr) (local.get $heap_deep_addr))
         (i32.store (i32.add (local.get $heap_shallow_addr) (i32.const 4)) (local.get $heap_deep_addr))
+        (i32.store (i32.add (local.get $heap_shallow_addr) (i32.const 8)) (i32.const -2))
 
-        ;; add some references from the stack:
+        ;; add some references to the heap on the stack:
         ;;; reference to heap
         (drop (call $stack_push))
         (local.set $ref_on_stack_addr_1 (call $alloc_stack (i32.const 1) (i32.const 10)))
-        (i32.store (local.get $ref_on_stack_addr_1) (local.get $heap_deep_addr))
+        (i32.store (local.get $ref_on_stack_addr_1) (local.get $heap_shallow_addr))
+        (i32.store (i32.add (local.get $ref_on_stack_addr_1) (i32.const 4)) (i32.const -3))
         ;;; will be popped before GC
         (local.set $stack_top (call $stack_push))
         (local.set $ref_on_stack_addr_2 (call $alloc_stack (i32.const 1) (i32.const 5)))
@@ -570,13 +574,40 @@
         (i32.store (local.get $ref_on_stack_addr_3) (local.get $ref_on_stack_addr_1))
 
         ;; run GC
+        (local.set $orig_heap_size (call $get_young_size))
         call $gc_full
 
         ;; check that memory usage decreased
+        (if (i32.eq (call $get_young_size) (i32.const 0)) (then
+            (call $log_err_code (i32.const 113)) unreachable))
+        (if (i32.ge_s (call $get_young_size) (local.get $orig_heap_size)) (then
+            (call $log_err_code (i32.const 114)) unreachable))
 
         ;; check that referenced memory still exists
+        (if (i32.ne (i32.load (i32.add (local.get $ref_on_stack_addr_1) (i32.const 4))) (i32.const -3)) (then
+            (call $log_err_code (i32.const 115)) unreachable))
+        (local.set $new_heap_shallow_addr (i32.load (local.get $ref_on_stack_addr_1)))
+        (if (i32.ne (i32.load (i32.add (local.get $new_heap_shallow_addr) (i32.const 8))) (i32.const -2)) (then
+            (call $log_err_code (i32.const 116)) unreachable))
+        (local.set $new_heap_deep_addr (i32.load (local.get $new_heap_shallow_addr)))
+        (if (i32.ne (i32.load (i32.add (local.get $new_heap_deep_addr) (i32.const 4))) (i32.const -1)) (then
+            (call $log_err_code (i32.const 117)) unreachable))
 
-        ;; check that referenced memory has been compacted
+
+;;        (i32.store (local.get $heap_shallow_addr) (local.get $heap_deep_addr))
+;;        (i32.load (i32.add (local.get $heap_deep_addr) (i32.const 4)) (i32.const -1))
+;;        (i32.load (i32.add (local.get $heap_shallow_addr) (i32.const 8)) (i32.const -2))
+
+        ;; check that referenced memory has moved (which in combination
+        ;; with above probably means compacted)
+        ;;TODO @mark: check addr?
+
+        ;;TODO @mark:
+
+
+        (if (i32.ge_s (call $get_young_size) (local.get $orig_heap_size)) (then
+            (call $log_err_code (i32.const 100)) unreachable))
+
 
     )
 

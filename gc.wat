@@ -120,17 +120,6 @@
             (local $new_young_length i32)
             (local $orig_offset_addr i32)
 
-        ;; mutable not supported yet
-        (if (i32.ne (local.get $pointers_mutable) (i32.const 0)) (then
-            (call $log_err_code (i32.const 2))
-            unreachable
-        ))
-        ;; pointer_cnt not supported yet
-        (if (i32.ne (local.get $pointer_cnt) (i32.const 0)) (then
-            (call $log_err_code (i32.const 3))
-            unreachable
-        ))
-
         ;; calculate the necessary size (words) including metadata
         (local.set $alloc_size (i32.add (i32.const 1) (i32.add (local.get $pointer_cnt) (local.get $data_size_32))))
         ;;TODO @mark: for now assume metadata is 1 word ^
@@ -148,8 +137,7 @@
             (call $glob_young_start_addr)
             (i32.mul (i32.const 4) (local.get $orig_young_length))))
 
-        (local.set $pointers_mutable (i32.const 1)) ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        ;; write metadata - just length for now
+        ;; write metadata
         (call $write_metadata_heap
                 (local.get $orig_offset_addr)
                 (local.get $pointer_cnt)
@@ -269,6 +257,9 @@
             (param $data_size_32 i32)
             (param $pointers_mutable i32)
             (local $flags i32)
+
+        ;; reset all bits to 0
+        (i32.store (local.get $meta_addr) (i32.const 0))
 
         ;; sizes
         (if (i32.gt_u (local.get $pointer_cnt) (i32.const 127)) (then (call $log_err_code (i32.const 7)) unreachable ))
@@ -417,6 +408,10 @@
         (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $alloc_init)  ;; reset heap
 
+        (call $test_mut_pointer_alloc)
+        (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $alloc_init)  ;; reset heap
+
         (call $test_double_stack_alloc)
         ;;TODO @mark: not printing?
         (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
@@ -446,6 +441,18 @@
             (call $log_err_code (i32.const 101))
             unreachable
         ))
+    )
+
+    (func $test_mut_pointer_alloc
+            (local $addr i32)
+
+        ;; allocation with mutable pointers and data twice
+        (drop (call $alloc (i32.const 1) (i32.const 0) (i32.const 1)))
+        (local.set $addr (call $alloc (i32.const 2) (i32.const 2) (i32.const 1)))
+
+        ;; check the size and properties
+        (if (i32.ne (call $get_young_size) (i32.const 7)) (then (
+            call $log_err_code (i32.const 112)) unreachable ))
     )
 
     (func $test_double_stack_alloc

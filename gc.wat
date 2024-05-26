@@ -49,6 +49,7 @@
 ;; TODO have some post-GC handler?
 ;; TODO can the GC have its own stack without reusing or unwinding program stack?
 ;; TODO is BF search better because only stack memory (and less total?), or is DF better bc of memory locality?
+;; TODO a large part of the header is based on the type, so needn't be constructed on every alloc
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
@@ -189,13 +190,13 @@
         (i32.store (call $addr_stack_length) (local.get $frame_ix))
     )
 
-    ;; like $stack_alloc0, but traps when OOM
-    (func $stack_alloc (export "$stack_alloc")
+    ;; like $alloc_stack0, but traps when OOM
+    (func $alloc_stack (export "$alloc_stack")
             (param $pointer_cnt i32)
             (param $data_size_32 i32)  ;; units are 32-bit words
             (result i32)  ;; addr
             (local $res i32)
-        (local.set $res (call $stack_alloc0 (local.get $pointer_cnt) (local.get $data_size_32)))
+        (local.set $res (call $alloc_stack0 (local.get $pointer_cnt) (local.get $data_size_32)))
         (if (i32.eq (local.get $res) (i32.const 0)) (then
             (call $log_err_code (i32.const 6))
             unreachable
@@ -207,7 +208,7 @@
     ;; stack_pop_to. (it may be possible to group several objects into a
     ;; single allocation, but not all of them, due to dynamically sized objects).
     ;;TODO: make a 0-returning version?
-    (func $stack_alloc0 (export "stack_alloc0")
+    (func $alloc_stack0 (export "stack_alloc0")
             (param $pointer_cnt i32)
             (param $data_size_32 i32)  ;; units are 32-bit words
             (result i32)  ;; addr
@@ -458,7 +459,7 @@
         (local.set $top2 (call $stack_push))
 
         ;; first allocation
-        (drop (call $stack_alloc (i32.const 0) (i32.const 2)))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 2)))
         (if (i32.ne (call $get_stack_size) (i32.const 3)) (then
             (call $log_err_code (i32.const 108))
             unreachable
@@ -468,8 +469,8 @@
         (call $stack_pop_to (local.get $top2))
 
         ;; what if we do it again
-        (drop (call $stack_alloc (i32.const 0) (i32.const 1)))
-        (drop (call $stack_alloc (i32.const 0) (i32.const 8)))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 1)))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 8)))
         (if (i32.ne (call $get_stack_size) (i32.const 11)) (then
             (call $log_err_code (i32.const 109))
             unreachable
@@ -484,11 +485,12 @@
 
         ;; leave some data for heap test
         (local.set $top1 (call $stack_push))
-        (drop (call $stack_alloc (i32.const 0) (i32.const 2)))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 2)))
     )
 
     (func $test_alloc_full_heap_GC
             (local $i i32)
+            (local $orig_stack_size i32)
 
         ;; fill almost all memory
         (local.set $i (i32.const 0))
@@ -505,8 +507,22 @@
         (if (i32.ne (i32.const 0)) (then
             (call $log_err_code (i32.const 105)) unreachable))
 
-        ;; test that GC cleans memory
+        ;; create some stack allocs so GC isn't too easy
+        (drop (call $stack_push))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 127)))
+        (drop (call $stack_push))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 3)))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 50)))
+        (local.set $orig_stack_size (call $get_stack_size))
+
+        ;; do GC
         call $gc_full
+
+        ;; test that GC does not clcean stack
+        (if (i32.ne (call $get_stack_size) (local.get $orig_stack_size)) (then
+            (call $log_err_code (i32.const 111)) unreachable))
+
+        ;; test that GC cleans heap
         call $alloc_init  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (if (i32.ne (call $get_young_size) (i32.const 0)) (then
             (call $log_err_code (i32.const 106)) unreachable))

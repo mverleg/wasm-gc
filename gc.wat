@@ -418,6 +418,9 @@
 
         (call $test_alloc_full_heap_GC)
         (call $alloc_init)  ;; reset heap
+
+        (call $test_compact_alive_in_full_GC)
+        (call $alloc_init)  ;; reset heap
     )
 
     (func $test_empty_heap
@@ -534,4 +537,55 @@
         (if (i32.ne (call $get_young_size) (i32.const 0)) (then
             (call $log_err_code (i32.const 106)) unreachable))
     )
+
+    (func $test_compact_alive_in_full_GC
+            (local $orig_heap_size i32)
+            (local $orig_heap_obj_addr i32)
+            (local $ref_on_stack_addr i32)
+
+        ;; fill some unreferences heap memory
+
+        ;; fill some more heap memory that we'll reference
+
+        ;; add references to some heap memory
+        (drop (call $stack_push))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 127)))
+        (drop (call $stack_push))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 3)))
+        (drop (call $alloc_stack (i32.const 0) (i32.const 50)))
+        (local.set $orig_stack_size (call $get_stack_size))
+        ;;TODO @mark:
+
+        ;; run GC
+        call $gc_full
+
+        ;; check that memory usage decreased
+
+        ;; check that referenced memory still exists
+
+        ;; check that referenced memory has been compacted
+
+
+        (local.set $i (i32.const 0))
+        (block $outer (loop $continue
+            (i32.ge_u (local.get $i) (i32.const 128))
+            br_if $outer
+            (drop (call $alloc (i32.const 0) (i32.const 127) (i32.const 0)))
+            (local.set $i (i32.add (local.get $i) (i32.const 1)))
+            br $continue
+        ))
+
+        ;; test that alloc fails
+        (call $alloc0 (i32.const 0) (i32.const 127) (i32.const 0))
+        (if (i32.ne (i32.const 0)) (then
+        (call $log_err_code (i32.const 105)) unreachable))
+
+        ;; test that GC cleans memory
+        call $gc_full
+        call $alloc_init  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (if (i32.ne (call $get_young_size) (i32.const 0)) (then
+                    (call $log_err_code (i32.const 106)) unreachable))
+    )
+
+    ;;TODO @mark: test that mutable pointer data doesn't go to old heap
 )

@@ -120,6 +120,13 @@
             (local $new_young_length i32)
             (local $orig_offset_addr i32)
 
+        ;; debug only?
+        (if (i32.ne (local.get $pointers_mutable) (i32.const 0)) (then
+        (if (i32.eq (local.get $pointer_cnt) (i32.const 0)) (then
+            (call $log_err_code (i32.const 12))
+            unreachable
+        ))))
+
         ;; calculate the necessary size (words) including metadata
         (local.set $alloc_size (i32.add (i32.const 1) (i32.add (local.get $pointer_cnt) (local.get $data_size_32))))
         ;;TODO @mark: for now assume metadata is 1 word ^
@@ -550,22 +557,22 @@
         (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; fill some unreferences heap memory
-        (local.set $heap_selfref_addr (call $alloc (i32.const 0) (i32.const 2) (i32.const 5)))
+        (local.set $heap_selfref_addr (call $alloc (i32.const 1) (i32.const 2) (i32.const 1)))
 
         (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $log_i32 (i32.const -2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         (i32.store (local.get $heap_selfref_addr) (local.get $heap_selfref_addr))
-        (local.set $heap_popped_addr (call $alloc (i32.const 0) (i32.const 1) (i32.const 5)))
+        (local.set $heap_popped_addr (call $alloc (i32.const 1) (i32.const 1) (i32.const 1)))
         (i32.store (local.get $heap_popped_addr) (local.get $heap_popped_addr))
 
         (call $log_nl)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; fill some more heap memory that we'll reference
-        (local.set $heap_deep_addr (call $alloc (i32.const 0) (i32.const 1) (i32.const 3)))
+        (local.set $heap_deep_addr (call $alloc (i32.const 1) (i32.const 1) (i32.const 1)))
         (i32.store (i32.add (local.get $heap_deep_addr) (i32.const 4)) (i32.const -1))
-        (local.set $heap_shallow_addr (call $alloc (i32.const 0) (i32.const 2) (i32.const 1)))
+        (local.set $heap_shallow_addr (call $alloc (i32.const 1) (i32.const 2) (i32.const 1)))
         (i32.store (local.get $heap_shallow_addr) (local.get $heap_deep_addr))
         (i32.store (i32.add (local.get $heap_shallow_addr) (i32.const 4)) (local.get $heap_deep_addr))
         (i32.store (i32.add (local.get $heap_shallow_addr) (i32.const 8)) (i32.const -2))

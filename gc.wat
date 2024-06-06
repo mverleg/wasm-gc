@@ -53,6 +53,7 @@
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
     (import "host" "log_i32x5" (func $log_i32x5 (param i32) (param i32) (param i32) (param i32) (param i32)))
+    (import "host" "log_nl" (func $log_nl))
     (import "host" "log_err_code" (func $log_err_code (param i32)))
     (memory 3 3)  ;; 2x 64k
     (func $alloc_init
@@ -544,11 +545,22 @@
             (local $new_heap_shallow_addr i32)
             (local $new_heap_deep_addr i32)
 
+        (call $log_nl)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+
         ;; fill some unreferences heap memory
         (local.set $heap_selfref_addr (call $alloc (i32.const 0) (i32.const 2) (i32.const 5)))
+
+        (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (i32.const -2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+
         (i32.store (local.get $heap_selfref_addr) (local.get $heap_selfref_addr))
         (local.set $heap_popped_addr (call $alloc (i32.const 0) (i32.const 1) (i32.const 5)))
         (i32.store (local.get $heap_popped_addr) (local.get $heap_popped_addr))
+
+        (call $log_nl)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; fill some more heap memory that we'll reference
         (local.set $heap_deep_addr (call $alloc (i32.const 0) (i32.const 1) (i32.const 3)))
@@ -557,6 +569,9 @@
         (i32.store (local.get $heap_shallow_addr) (local.get $heap_deep_addr))
         (i32.store (i32.add (local.get $heap_shallow_addr) (i32.const 4)) (local.get $heap_deep_addr))
         (i32.store (i32.add (local.get $heap_shallow_addr) (i32.const 8)) (i32.const -2))
+
+        (call $log_nl)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         ;; add some references to the heap on the stack:
         ;;; reference to heap
@@ -584,9 +599,11 @@
 ;;            (call $log_err_code (i32.const 114)) unreachable))
         ;;TODO @mark: ON ^
 
+        (call $log_nl)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         (call $log_i32 (local.get $ref_on_stack_addr_1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (i32.load (i32.add (local.get $ref_on_stack_addr_1) (i32.const 4))))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $log_i32 (local.get $heap_shallow_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $log_i32 (local.get $new_heap_shallow_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $log_i32 (local.get $heap_deep_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!

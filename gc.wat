@@ -52,7 +52,7 @@
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))
-    (import "host" "log_i32x5" (func $log_i32x5 (param i32) (param i32) (param i32) (param i32) (param i32)))
+    (import "host" "log_i32x6" (func $log_i32x6 (param i32) (param i32) (param i32) (param i32) (param i32) (param i32)))
     (import "host" "log_nl" (func $log_nl))
     (import "host" "log_err_code" (func $log_err_code (param i32)))
     (memory 3 3)  ;; 2x 64k
@@ -75,7 +75,7 @@
     (func $const_old_heap_max_size (result i32) i32.const 0)
 
     (func $glob_stack_start_addr (result i32) i32.const 20)
-    (func $glob_young_top_addr (result i32) (local $res i32)
+    (func $glob_young_start_addr (result i32) (local $res i32)
         ;; start of stack + length of stack + currently used stack space
 
         (local.set $res (i32.add
@@ -141,7 +141,7 @@
 
         ;; find current top of young heap addr
         (local.set $orig_offset_addr (i32.add
-            (call $glob_young_top_addr)
+            (call $glob_young_start_addr)
             (i32.mul (i32.const 4) (local.get $orig_young_length))))
 
         ;; write metadata
@@ -364,12 +364,13 @@
             (i32.ge_u (local.get $i) (local.get $upto))
             br_if $outer
             (local.set $p (i32.add (local.get $i) (local.get $start)))
-            (call $log_i32x5
+            (call $log_i32x6
                     (i32.div_s (local.get $i) (i32.const -4))
                     (i32.load8_u (i32.add (local.get $p) (i32.const 0)))
                     (i32.load8_u (i32.add (local.get $p) (i32.const 1)))
                     (i32.load8_u (i32.add (local.get $p) (i32.const 2)))
-                    (i32.load8_u (i32.add (local.get $p) (i32.const 3))))
+                    (i32.load8_u (i32.add (local.get $p) (i32.const 3)))
+                    (local.get $p))
             (local.set $i (i32.add (local.get $i) (i32.const 4)))
             (br $continue)
         ))
@@ -380,19 +381,20 @@
             (local $p i32)
             (local $start i32)
             (local $upto i32)
-        (local.set $start (call $glob_young_top_addr))
+        (local.set $start (call $glob_young_start_addr))
         (local.set $upto (i32.mul (i32.const 4) (call $get_young_size)))
         (local.set $i (i32.const 0))
         (block $outer (loop $continue
             (i32.ge_u (local.get $i) (local.get $upto))
             br_if $outer
             (local.set $p (i32.add (local.get $i) (local.get $start)))
-            (call $log_i32x5
+            (call $log_i32x6
                     (i32.div_s (local.get $i) (i32.const 4))
                     (i32.load8_u (i32.add (local.get $p) (i32.const 0)))
                     (i32.load8_u (i32.add (local.get $p) (i32.const 1)))
                     (i32.load8_u (i32.add (local.get $p) (i32.const 2)))
-                    (i32.load8_u (i32.add (local.get $p) (i32.const 3))))
+                    (i32.load8_u (i32.add (local.get $p) (i32.const 3)))
+                    (local.get $p))
             (local.set $i (i32.add (local.get $i) (i32.const 4)))
             (br $continue)
         ))
@@ -554,19 +556,23 @@
 
         (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
+        (call $log_i32 (call $glob_young_start_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+
         ;; fill some unreferences heap memory
         (local.set $heap_selfref_addr (call $alloc (i32.const 1) (i32.const 2) (i32.const 1)))
 
         (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $log_i32 (i32.const -2))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $log_i32 (local.get $heap_selfref_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        (call $log_i32 (call $glob_young_top_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-        (call $log_i32 (call $addr_young_length))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (call $glob_young_start_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (i32.add (local.get $heap_selfref_addr) (i32.const 4)))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        (call $log_i32 (local.get $heap_selfref_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
         (i32.store (i32.add (local.get $heap_selfref_addr) (i32.const 4)) (local.get $heap_selfref_addr))
 
         (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (call $log_i32 (i32.const -3))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
+        return
 
         (local.set $heap_popped_addr (call $alloc (i32.const 1) (i32.const 1) (i32.const 1)))
 

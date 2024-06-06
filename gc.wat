@@ -80,9 +80,7 @@
 
         (local.set $res (i32.add
             (call $glob_stack_start_addr)
-            (i32.mul (i32.const 4) (i32.add
-                (call $const_stack_max_size)
-                (i32.load (call $addr_young_length))))))
+            (i32.mul (i32.const 4) (call $const_stack_max_size))))
 
         (if (i32.ne (i32.load (call $addr_young_side)) (i32.const 0)) (then
             ;; when using 'other half' of young, add one half's size
@@ -92,6 +90,11 @@
         ))
         local.get $res
     )
+;;    (func $glob_young_top_addr (result i32) (local $res i32)
+;;        (return (i32.add
+;;            (call $glob_young_start_addr)
+;;            (i32.mul (i32.const 4) (call $get_young_size))))
+;;    )
 
     ;; default alloc, traps when OOM
     (func $alloc (export "alloc")
@@ -556,9 +559,8 @@
 
         (call $log_i32 (i32.const -1))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
 
-        (call $log_i32 (call $glob_young_start_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
-
         ;; fill some unreferences heap memory
+        (call $log_i32 (call $glob_young_start_addr))  ;;TODO @mark: TEMPORARY! REMOVE THIS!
         (local.set $heap_selfref_addr (call $alloc (i32.const 1) (i32.const 2) (i32.const 1)))
 
         (call $print_memory)  ;;TODO @mark: TEMPORARY! REMOVE THIS!

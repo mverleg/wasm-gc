@@ -10,11 +10,32 @@ const WORD_SIZE: AddrNr = 4;
 #[derive(Debug)]
 struct StackHeader {}
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum HeaderEnc { Small(AddrNr), Big(AddrNr, AddrNr) }
+
+impl StackHeader {
+    fn encode(self) -> HeaderEnc {
+        unimplemented!()
+    }
+}
+
 #[derive(Debug)]
 struct YoungHeapHeader {}
 
+impl YoungHeapHeader {
+    fn encode(self) -> HeaderEnc {
+        unimplemented!()
+    }
+}
+
 #[derive(Debug)]
 struct OldHeapHeader {}
+
+impl OldHeapHeader {
+    fn encode(self) -> HeaderEnc {
+        unimplemented!()
+    }
+}
 
 const OFFSET: Pointer = Pointer((size_of::<GcConf>() + size_of::<GcState>()) as u32 + WORD_SIZE);
 
@@ -137,7 +158,11 @@ pub fn alloc_heap(
     data_size_32: WordSize,
     pointers_mutable: bool,
 ) -> Pointer {
-    unimplemented!()
+    GC_STATE.with_borrow_mut(|state| {
+        let p_init = state.stack_top;
+        let header = YoungHeapHeader {};
+        let header_bytes = header.encode();
+    });
 }
 
 pub fn alloc0_heap(

@@ -1,3 +1,5 @@
+mod gc;
+
 use ::std::env;
 use ::std::fs;
 

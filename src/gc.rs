@@ -3,9 +3,12 @@ use ::std::mem::size_of;
 use ::std::ops::Add;
 use ::std::ops::Mul;
 use ::std::ops::Sub;
+use ::std::ops::Index;
+use ::std::ops::IndexMut;
 
 type AddrNr = u32;
-const WORD_SIZE: AddrNr = 4;
+
+const WORD_SIZE: ByteSize = ByteSize(4);
 
 #[derive(Debug)]
 struct StackHeader {}
@@ -21,7 +24,7 @@ impl StackHeader {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum DataKind { Struct, Array, Forward }
-//TODO @mark: special kind for structs with more than 256 fields?
+//TODO @mark: special kind for structs with more than 256 fields, and arrays of the same?
 
 #[derive(Debug)]
 struct YoungHeapHeader {
@@ -47,7 +50,7 @@ impl OldHeapHeader {
     }
 }
 
-const OFFSET: Pointer = Pointer((size_of::<GcConf>() + size_of::<GcState>()) as u32 + WORD_SIZE);
+const OFFSET: Pointer = Pointer((size_of::<GcConf>() + size_of::<GcState>()) as u32 + WORD_SIZE.0);
 
 #[derive(Debug)]
 struct GcConf {
@@ -67,6 +70,10 @@ impl GcConf {
 
     fn old_start(&self) -> Pointer {
         self.young_side_start() + self.young_side_capacity.bytes() * 2
+    }
+
+    fn end_of_memory(&self) -> Pointer {
+        self.old_start() + self.old_capacity.bytes()
     }
 }
 
@@ -96,19 +103,19 @@ impl GcState {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct ByteSize(AddrNr);
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct WordSize(AddrNr);
 
 impl WordSize {
     fn bytes(self) -> ByteSize {
-        ByteSize(WORD_SIZE *  self.0)
+        ByteSize(WORD_SIZE.0 * self.0)
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct Pointer(AddrNr);
 
 impl Sub for Pointer {
@@ -138,6 +145,24 @@ impl Add<ByteSize> for Pointer {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Side { Left, Right }
 
+struct Data {
+    mem: Vec<i32>,
+}
+
+impl Index<Pointer> for Data {
+    type Output = i32;
+
+    fn index(&self, index: Pointer) -> &Self::Output {
+        &self.mem[index.0 as usize]
+    }
+}
+
+impl IndexMut<Pointer> for Data {
+    fn index_mut(&mut self, index: Pointer) -> &mut Self::Output {
+        &mut self.mem[index.0 as usize]
+    }
+}
+
 thread_local! {
     static GC_CONF: RefCell<GcConf> = {
         let stack_capacity = WordSize(1024);
@@ -149,8 +174,6 @@ thread_local! {
             old_capacity,
         })
     };
-}  //TODO @mark: remove if possible
-thread_local! {
     static GC_STATE: RefCell<GcState> = {
         GC_CONF.with_borrow(|conf|
             RefCell::new(GcState {
@@ -161,6 +184,11 @@ thread_local! {
             })
         )
     };
+    static DATA: RefCell<Data> = {
+        GC_CONF.with_borrow(|conf|
+            RefCell::new(Data { mem: vec![0; conf.end_of_memory().0 as usize] })
+        )
+    };
 }
 
 pub fn alloc_heap(
@@ -169,16 +197,33 @@ pub fn alloc_heap(
     pointers_mutable: bool,
 ) -> Pointer {
     GC_STATE.with_borrow_mut(|state| {
-        let p_init = state.stack_top;
-        let header = YoungHeapHeader {
-            data_kind: DataKind::Struct,
-            gc_reachable: false,
-            pointers_mutable,
-            pointer_cnt,
-            data_size_32,
-        };
-        let header_bytes = header.encode();
-    });
+        DATA.with_borrow_mut(|data| {
+            let p_init = state.stack_top;
+            let header = YoungHeapHeader {
+                data_kind: DataKind::Struct,
+                gc_reachable: false,
+                pointers_mutable,
+                pointer_cnt,
+                data_size_32,
+            };
+            let p_return = match header.encode() {
+                HeaderEnc::Small(w) => {
+                    data[p_init] = w;
+                    p_init + WORD_SIZE
+                }
+                HeaderEnc::Big(w1, w2) => {
+                    data[p_init] = w1;
+                    data[p_init + WORD_SIZE] = w2;
+                    p_init + WORD_SIZE * 2
+                }
+            };
+            let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
+            state.young_top = p_end;
+            debug_assert!(p_end > p_return);
+            debug_assert!(p_return > p_init);
+            p_return
+        })
+    })
 }
 
 pub fn alloc0_heap(

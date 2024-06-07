@@ -15,16 +15,26 @@ enum HeaderEnc { Small(AddrNr), Big(AddrNr, AddrNr) }
 
 impl StackHeader {
     fn encode(self) -> HeaderEnc {
-        unimplemented!()
+        unimplemented!()  //TODO @mark: use u32 instead of Addr?
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DataKind { Struct, Array, Forward }
+//TODO @mark: special kind for structs with more than 256 fields?
+
 #[derive(Debug)]
-struct YoungHeapHeader {}
+struct YoungHeapHeader {
+    data_kind: DataKind,
+    gc_reachable: bool,
+    pointers_mutable: bool,
+    pointer_cnt: WordSize,
+    data_size_32: WordSize,
+}
 
 impl YoungHeapHeader {
     fn encode(self) -> HeaderEnc {
-        unimplemented!()
+        unimplemented!()  //TODO @mark: use u32 instead of Addr?
     }
 }
 
@@ -33,7 +43,7 @@ struct OldHeapHeader {}
 
 impl OldHeapHeader {
     fn encode(self) -> HeaderEnc {
-        unimplemented!()
+        unimplemented!()  //TODO @mark: use u32 instead of Addr?
     }
 }
 
@@ -160,7 +170,13 @@ pub fn alloc_heap(
 ) -> Pointer {
     GC_STATE.with_borrow_mut(|state| {
         let p_init = state.stack_top;
-        let header = YoungHeapHeader {};
+        let header = YoungHeapHeader {
+            data_kind: DataKind::Struct,
+            gc_reachable: false,
+            pointers_mutable,
+            pointer_cnt,
+            data_size_32,
+        };
         let header_bytes = header.encode();
     });
 }

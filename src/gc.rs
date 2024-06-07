@@ -1,11 +1,11 @@
 use ::std::cell::RefCell;
 use ::std::mem::size_of;
-use ::std::ops::Sub;
 use ::std::ops::Add;
-use std::ops::Mul;
+use ::std::ops::Mul;
+use ::std::ops::Sub;
 
-type Addr = u32;
-const WORD_SIZE: Addr = 4;
+type AddrNr = u32;
+const WORD_SIZE: AddrNr = 4;
 
 #[derive(Debug)]
 struct StackHeader {}
@@ -16,13 +16,31 @@ struct YoungHeapHeader {}
 #[derive(Debug)]
 struct OldHeapHeader {}
 
-const OFFSET: Pointer = Pointer(size_of::<GcState>() as u32 + WORD_SIZE);
+const OFFSET: Pointer = Pointer((size_of::<GcConf>() + size_of::<GcState>()) as u32 + WORD_SIZE);
 
 #[derive(Debug)]
-struct GcState {
+struct GcConf {
     stack_capacity: WordSize,
     young_side_capacity: WordSize,
     old_capacity: WordSize,
+}
+
+impl GcConf {
+    fn stack_start(&self) -> Pointer {
+        OFFSET
+    }
+
+    fn young_side_start(&self) -> Pointer {
+        self.stack_start() + self.stack_capacity.bytes()
+    }
+
+    fn old_start(&self) -> Pointer {
+        self.young_side_start() + self.young_side_capacity.bytes() * 2
+    }
+}
+
+#[derive(Debug)]
+struct GcState {
     stack_top: Pointer,
     young_side: Side,
     young_top: Pointer,
@@ -48,10 +66,10 @@ impl GcState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct ByteSize(Addr);
+struct ByteSize(AddrNr);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct WordSize(Addr);
+struct WordSize(AddrNr);
 
 impl WordSize {
     fn bytes(self) -> ByteSize {
@@ -60,7 +78,7 @@ impl WordSize {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Pointer(Addr);
+struct Pointer(AddrNr);
 
 impl Sub for Pointer {
     type Output = ByteSize;
@@ -90,20 +108,28 @@ impl Add<ByteSize> for Pointer {
 enum Side { Left, Right }
 
 thread_local! {
-    static STATE: RefCell<GcState> = {
+    static GC_CONF: RefCell<GcConf> = {
         let stack_capacity = WordSize(1024);
         let young_side_capacity = WordSize(16384);
         let old_capacity = WordSize(16384);
-        RefCell::new(GcState {
+        RefCell::new(GcConf {
             stack_capacity,
             young_side_capacity,
             old_capacity,
-            stack_top: OFFSET,
-            young_side: Side::Left,
-            young_top: OFFSET + stack_capacity.bytes(),
-            old_top: OFFSET + stack_capacity.bytes() + young_side_capacity.bytes() * 2,
         })
-    }
+    };
+}  //TODO @mark: remove if possible
+thread_local! {
+    static GC_STATE: RefCell<GcState> = {
+        GC_CONF.with_borrow(|conf|
+            RefCell::new(GcState {
+                stack_top: conf.stack_start(),
+                young_side: Side::Left,
+                young_top: conf.young_side_start(),
+                old_top: conf.old_start(),
+            })
+        )
+    };
 }
 
 pub fn alloc_heap(

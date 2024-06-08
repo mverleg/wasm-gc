@@ -187,6 +187,12 @@ struct Data {
     mem: Vec<AddrNr>,
 }
 
+impl Data {
+    pub fn len(&self) -> WordSize {
+        WordSize((self.mem.len() / 4).try_into().unwrap())
+    }
+}
+
 impl Index<Pointer> for Data {
     type Output = AddrNr;
 
@@ -202,30 +208,27 @@ impl IndexMut<Pointer> for Data {
 }
 
 thread_local! {
-    static GC_CONF: RefCell<GcConf> = {
-        let stack_capacity = WordSize(1024);
-        let young_side_capacity = WordSize(16384);
-        let old_capacity = WordSize(16384);
+    static GC_CONF: RefCell<GcConf> =
         RefCell::new(GcConf {
-            stack_capacity,
-            young_side_capacity,
-            old_capacity,
+            stack_capacity: WordSize(0),
+            young_side_capacity: WordSize(0),
+            old_capacity: WordSize(0),
         })
-    };
+    ;
     static GC_STATE: RefCell<GcState> = {
         GC_CONF.with_borrow(|conf|
             RefCell::new(GcState {
-                stack_top_frame: conf.stack_start(),
-                stack_top_data: Pointer::null(),
+                stack_top_frame: Pointer(0),
+                stack_top_data: Pointer(0),
                 young_side: Side::Left,
-                young_top: conf.young_side_start(),
-                old_top: conf.old_start(),
+                young_top: Pointer(0),
+                old_top: Pointer(0),
             })
         )
     };
     static DATA: RefCell<Data> = {
         GC_CONF.with_borrow(|conf|
-            RefCell::new(Data { mem: vec![0; conf.end_of_memory().0 as usize] })
+            RefCell::new(Data { mem: Vec::new() })
         )
     };
 }
@@ -328,10 +331,14 @@ pub fn reset() {
             young_top: conf.young_side_start(),
             old_top: conf.old_start(),
         });
-        DATA.with_borrow_mut(|data| *data =
-            // in debug mode 0x0F0F0F0F, usually 0x0
-            Data { mem: vec![0x0F0F0F0F; conf.end_of_memory().0 as usize] }
-        );
+        DATA.with_borrow_mut(|data| {
+            if (Pointer::null() + data.len().bytes()) < conf.end_of_memory() {
+                // in debug mode 0x0F0F0F0F, usually 0
+                *data = Data { mem: vec![0x0F0F0F0F; conf.end_of_memory().0 as usize] };
+            } else {
+                data.mem.fill(0x0F0F0F0F);
+            }
+        });
     });
 }
 

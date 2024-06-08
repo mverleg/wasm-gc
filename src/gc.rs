@@ -24,8 +24,8 @@ enum HeaderEnc { Small(AddrNr), Big(AddrNr, AddrNr) }
 impl HeaderEnc {
     fn len(self) -> ByteSize {
         match self {
-            HeaderEnc::Small(_) => ByteSize(1),
-            HeaderEnc::Big(_, _) => ByteSize(2),
+            HeaderEnc::Small(_) => WORD_SIZE,
+            HeaderEnc::Big(_, _) => WORD_SIZE * 2,
         }
     }
 }
@@ -100,6 +100,10 @@ impl GcConf {
         OFFSET
     }
 
+    fn stack_end(&self) -> Pointer {
+        self.stack_start() + self.stack_capacity.bytes()
+    }
+
     fn young_overall_start(&self) -> Pointer {
         self.stack_start() + self.stack_capacity.bytes()
     }
@@ -119,8 +123,12 @@ impl GcConf {
         self.young_overall_start() + self.young_side_capacity.bytes() * 2
     }
 
-    fn end_of_memory(&self) -> Pointer {
+    fn old_end(&self) -> Pointer {
         self.old_start() + self.old_capacity.bytes()
+    }
+
+    fn end_of_memory(&self) -> Pointer {
+        self.old_end()
     }
 }
 
@@ -283,7 +291,7 @@ pub fn alloc0_heap(
     pointers_mutable: bool,
 ) -> Option<Pointer> {
     GC_STATE.with_borrow_mut(|state| {
-        let young_side_end = GC_CONF.with_borrow_mut(|conf|
+        let young_side_end = GC_CONF.with_borrow(|conf|
             conf.young_side_end(state.young_side));
         DATA.with_borrow_mut(|data| {
             let p_init = state.young_top;
@@ -291,6 +299,52 @@ pub fn alloc0_heap(
                 data_kind: DataKind::Struct,
                 gc_reachable: false,
                 pointers_mutable,
+                pointer_cnt,
+                data_size_32,
+            };
+            let header_enc = header.encode();
+            let p_return = p_init + header_enc.len();
+            let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
+            if p_end > young_side_end {
+                //TODO @mark: this should GC to cleanup / move to old heap
+                println!("debug: young heap {:?} is full", state.young_side);
+                return None
+            }
+            match header_enc {
+                HeaderEnc::Small(w) => {
+                    data[p_init] = w;
+                }
+                HeaderEnc::Big(w1, w2) => {
+                    data[p_init] = w1;
+                    data[p_init + WORD_SIZE] = w2;
+                }
+            };
+            state.young_top = p_end;
+            debug_assert!(p_end > p_return);
+            debug_assert!(p_return > p_init);
+            Some(p_return)
+        })
+    })
+}
+
+pub fn alloc_stack(
+    pointer_cnt: WordSize,
+    data_size_32: WordSize,
+) -> Pointer {
+    alloc0_stack(pointer_cnt, data_size_32)
+        .expect("stack overflow")
+}
+
+pub fn alloc0_stack(
+    pointer_cnt: WordSize,
+    data_size_32: WordSize,
+) -> Option<Pointer> {
+    GC_STATE.with_borrow_mut(|state| {
+        let stack_end = GC_CONF.with_borrow_mut(|conf| conf.stack_end());
+        DATA.with_borrow_mut(|data| {
+            let p_init = state.young_top;
+            let header = StackHeader {
+                data_kind: DataKind::Struct,
                 pointer_cnt,
                 data_size_32,
             };
@@ -307,7 +361,7 @@ pub fn alloc0_heap(
             };
             //TODO @mark: don't write header before checking OOM! ^
             let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
-            if p_end > young_side_end {
+            if p_end > stack_end {
                 //TODO @mark: this should GC to cleanup / move to old heap
                 println!("debug: young heap {:?} is full", state.young_side);
                 return None
@@ -318,22 +372,6 @@ pub fn alloc0_heap(
             Some(p_return)
         })
     })
-}
-
-pub fn alloc_stack(
-    pointer_cnt: WordSize,
-    data_size_32: WordSize,
-    pointers_mutable: bool,
-) -> Pointer {
-    unimplemented!()
-}
-
-pub fn alloc0_stack(
-    pointer_cnt: WordSize,
-    data_size_32: WordSize,
-    pointers_mutable: bool,
-) -> Option<Pointer> {
-    unimplemented!()
 }
 
 /// The first word of a stack frame is the address of the previous one (0x0 for bottom)
@@ -411,8 +449,8 @@ fn alloc_data_on_heap() {
 fn alloc_data_on_stack() {
     reset();
     stack_frame_push();
-    let orig = alloc_stack(WordSize(1), WordSize(2), false);
-    let subsequent = alloc_stack(WordSize(2), WordSize(1), false);
+    let orig = alloc_stack(WordSize(1), WordSize(2));
+    let subsequent = alloc_stack(WordSize(2), WordSize(1));
     DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
     assert_eq!(subsequent - orig, ByteSize(16));
     assert_eq!(young_heap_size(), WordSize(8));

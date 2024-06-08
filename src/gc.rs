@@ -28,6 +28,18 @@ impl HeaderEnc {
             HeaderEnc::Big(_, _) => WORD_SIZE * 2,
         }
     }
+
+    fn write_to(self, ix: Pointer, data: &mut Data) {
+        match self {
+            HeaderEnc::Small(w) => {
+                data[ix] = w;
+            }
+            HeaderEnc::Big(w1, w2) => {
+                data[ix] = w1;
+                data[ix + WORD_SIZE] = w2;
+            }
+        };
+    }
 }
 
 impl StackHeader {
@@ -307,18 +319,10 @@ pub fn alloc0_heap(
             let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
             if p_end > young_side_end {
                 //TODO @mark: this should GC to cleanup / move to old heap
-                println!("debug: young heap {:?} is full", state.young_side);
+                println!("debug: young heap {:?} is full, {:?} > {:?}", state.young_side, p_end, young_side_end);
                 return None
             }
-            match header_enc {
-                HeaderEnc::Small(w) => {
-                    data[p_init] = w;
-                }
-                HeaderEnc::Big(w1, w2) => {
-                    data[p_init] = w1;
-                    data[p_init + WORD_SIZE] = w2;
-                }
-            };
+            header_enc.write_to(p_init, data);
             state.young_top = p_end;
             debug_assert!(p_end > p_return);
             debug_assert!(p_return > p_init);
@@ -342,30 +346,20 @@ pub fn alloc0_stack(
     GC_STATE.with_borrow_mut(|state| {
         let stack_end = GC_CONF.with_borrow_mut(|conf| conf.stack_end());
         DATA.with_borrow_mut(|data| {
-            let p_init = state.young_top;
+            let p_init = state.stack_top_data;
             let header = StackHeader {
                 data_kind: DataKind::Struct,
                 pointer_cnt,
                 data_size_32,
             };
-            let p_return = match header.encode() {
-                HeaderEnc::Small(w) => {
-                    data[p_init] = w;
-                    p_init + WORD_SIZE
-                }
-                HeaderEnc::Big(w1, w2) => {
-                    data[p_init] = w1;
-                    data[p_init + WORD_SIZE] = w2;
-                    p_init + WORD_SIZE * 2
-                }
-            };
-            //TODO @mark: don't write header before checking OOM! ^
+            let header_enc = header.encode();
+            let p_return = p_init + header_enc.len();
             let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
             if p_end > stack_end {
-                //TODO @mark: this should GC to cleanup / move to old heap
-                println!("debug: young heap {:?} is full", state.young_side);
+                println!("debug: stack overflowed, {:?} > {:?}", p_end, stack_end);
                 return None
             }
+            header_enc.write_to(p_init, data);
             state.young_top = p_end;
             debug_assert!(p_end > p_return);
             debug_assert!(p_return > p_init);

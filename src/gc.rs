@@ -310,7 +310,29 @@ pub fn stack_size() -> WordSize {
 
 #[cfg(test)]
 pub fn reset() {
-    unimplemented!()
+    GC_CONF.with_borrow_mut(|conf| {
+        let stack_capacity = WordSize(1024);
+        let young_side_capacity = WordSize(16384);
+        let old_capacity = WordSize(16384);
+        *conf = GcConf {
+            stack_capacity,
+            young_side_capacity,
+            old_capacity,
+        }
+    });
+    GC_CONF.with_borrow(|conf| {
+        GC_STATE.with_borrow_mut(|state| *state = GcState {
+            stack_top_frame: conf.stack_start(),
+            stack_top_data: Pointer::null(),
+            young_side: Side::Left,
+            young_top: conf.young_side_start(),
+            old_top: conf.old_start(),
+        });
+        DATA.with_borrow_mut(|data| *data =
+            // in debug mode 0x0F0F0F0F, usually 0x0
+            Data { mem: vec![0x0F0F0F0F; conf.end_of_memory().0 as usize] }
+        );
+    });
 }
 
 #[test]

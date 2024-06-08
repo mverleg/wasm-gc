@@ -6,9 +6,10 @@ use ::std::ops::Sub;
 use ::std::ops::Index;
 use ::std::ops::IndexMut;
 
-type AddrNr = u32;
+type AddrNr = i32;
 
 const WORD_SIZE: ByteSize = ByteSize(4);
+const STRUCT_BYTE: u8 = 1;
 
 #[derive(Debug)]
 struct StackHeader {}
@@ -35,9 +36,31 @@ struct YoungHeapHeader {
     data_size_32: WordSize,
 }
 
+fn mask(is_on: bool, ix: u8) -> u8 {
+    assert!(ix < 8);
+    if ! is_on {
+        return 0
+    } else {
+        1 << ix
+    }
+}
+
 impl YoungHeapHeader {
     fn encode(self) -> HeaderEnc {
-        unimplemented!()  //TODO @mark: use u32 instead of Addr?
+        assert!(self.pointer_cnt.0 > 0 || !self.pointers_mutable);
+        let pointer_cnt_u8: u8 = self.pointer_cnt.0.try_into().unwrap();
+        let data_size_32_u8: u8 = self.data_size_32.0.try_into().unwrap();
+        let flags: u8 = mask(self.gc_reachable, 0) & mask(self.pointers_mutable, 1);
+        match self.data_kind {
+            DataKind::Struct => HeaderEnc::Small(i32::from_le_bytes([
+                STRUCT_BYTE,
+                flags,
+                pointer_cnt_u8,
+                data_size_32_u8,
+            ])),
+            DataKind::Array => unimplemented!(),
+            DataKind::Forward => unimplemented!(),
+        }
     }
 }
 
@@ -50,7 +73,7 @@ impl OldHeapHeader {
     }
 }
 
-const OFFSET: Pointer = Pointer((size_of::<GcConf>() + size_of::<GcState>()) as u32 + WORD_SIZE.0);
+const OFFSET: Pointer = Pointer((size_of::<GcConf>() + size_of::<GcState>()) as AddrNr + WORD_SIZE.0);
 
 #[derive(Debug)]
 struct GcConf {
@@ -122,14 +145,14 @@ impl Sub for Pointer {
     type Output = ByteSize;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        ByteSize(rhs.0 - self.0)
+        ByteSize(self.0 - rhs.0)
     }
 }
 
-impl Mul<u32> for ByteSize {
+impl Mul<AddrNr> for ByteSize {
     type Output = ByteSize;
 
-    fn mul(self, rhs: u32) -> Self::Output {
+    fn mul(self, rhs: AddrNr) -> Self::Output {
         ByteSize(self.0 * rhs)
     }
 }
@@ -146,11 +169,11 @@ impl Add<ByteSize> for Pointer {
 enum Side { Left, Right }
 
 struct Data {
-    mem: Vec<i32>,
+    mem: Vec<AddrNr>,
 }
 
 impl Index<Pointer> for Data {
-    type Output = i32;
+    type Output = AddrNr;
 
     fn index(&self, index: Pointer) -> &Self::Output {
         &self.mem[index.0 as usize]
@@ -198,7 +221,7 @@ pub fn alloc_heap(
 ) -> Pointer {
     GC_STATE.with_borrow_mut(|state| {
         DATA.with_borrow_mut(|data| {
-            let p_init = state.stack_top;
+            let p_init = state.young_top;
             let header = YoungHeapHeader {
                 data_kind: DataKind::Struct,
                 gc_reachable: false,
@@ -219,6 +242,7 @@ pub fn alloc_heap(
             };
             let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
             state.young_top = p_end;
+            println!("{p_init:?} , {p_return:?} , {p_end:?}"); //TODO @mark: TEMPORARY! REMOVE THIS!
             debug_assert!(p_end > p_return);
             debug_assert!(p_return > p_init);
             p_return
@@ -250,14 +274,10 @@ pub fn alloc0_stack(
     unimplemented!()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn alloc_data_on_heap() {
-        let orig = alloc_heap(WordSize(0), WordSize(2), false);
-        let subsequent = alloc_heap(WordSize(0), WordSize(2), false);
-        assert_eq!(subsequent - orig, ByteSize(12));
-    }
+#[test]
+fn alloc_data_on_heap() {
+    let orig = alloc_heap(WordSize(0), WordSize(2), false);
+    let subsequent = alloc_heap(WordSize(0), WordSize(2), false);
+    assert_eq!(subsequent - orig, ByteSize(12));
 }

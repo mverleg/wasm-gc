@@ -49,6 +49,8 @@
 ;; TODO can the GC have its own stack without reusing or unwinding program stack?
 ;; TODO is BF search better because only stack memory (and less total?), or is DF better bc of memory locality?
 ;; TODO a large part of the header is based on the type, so needn't be constructed on every alloc
+;; TODO we need to read headers from end (following roots) and from start (compacting old heap), but they are variable length, so must be able to know the length from first and from last byte
+;;   TODO ^ would it be easier to just return pointer to second word, and e.g. put array length there?
 
 (module
     (import "host" "log_i32" (func $log_i32 (param i32)))

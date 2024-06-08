@@ -324,7 +324,14 @@ pub fn stack_frame_push() {
 }
 
 pub fn stack_frame_pop() {
-    unimplemented!()
+    GC_STATE.with_borrow_mut(|state| {
+        DATA.with_borrow_mut(|data| {
+            let prev_frame = data[state.stack_top_frame];
+            assert_ne!(prev_frame, 0, "stack is empty, cannot pop frame");
+            state.stack_top_data = state.stack_top_frame;
+            state.stack_top_frame = Pointer(prev_frame);
+        });
+    });
 }
 
 pub fn young_heap_size() -> WordSize {

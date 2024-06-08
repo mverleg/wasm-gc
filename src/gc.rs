@@ -22,6 +22,17 @@ struct StackHeader {
 enum HeaderEnc { Small(AddrNr), Big(AddrNr, AddrNr) }
 
 impl HeaderEnc {
+    fn of_struct(flags: u8, pointer_cnt: WordSize, data_size_32: WordSize) -> Self {
+        let pointer_cnt_u8: u8 = pointer_cnt.0.try_into().unwrap();
+        let data_size_32_u8: u8 = data_size_32.0.try_into().unwrap();
+        HeaderEnc::Small(i32::from_le_bytes([
+            STRUCT_BYTE,
+            flags,
+            pointer_cnt_u8,
+            data_size_32_u8,
+        ]))
+    }
+
     fn len(self) -> ByteSize {
         match self {
             HeaderEnc::Small(_) => WORD_SIZE,
@@ -44,7 +55,8 @@ impl HeaderEnc {
 
 impl StackHeader {
     fn encode(self) -> HeaderEnc {
-        unimplemented!()  //TODO @mark: use u32 instead of Addr?
+        let flags: u8 = 0;
+        HeaderEnc::of_struct(flags, self.pointer_cnt, self.data_size_32)
     }
 }
 
@@ -73,19 +85,8 @@ fn mask(is_on: bool, ix: u8) -> u8 {
 impl YoungHeapHeader {
     fn encode(self) -> HeaderEnc {
         assert!(self.pointer_cnt.0 > 0 || !self.pointers_mutable);
-        let pointer_cnt_u8: u8 = self.pointer_cnt.0.try_into().unwrap();
-        let data_size_32_u8: u8 = self.data_size_32.0.try_into().unwrap();
         let flags: u8 = mask(self.gc_reachable, 0) & mask(self.pointers_mutable, 1);
-        match self.data_kind {
-            DataKind::Struct => HeaderEnc::Small(i32::from_le_bytes([
-                STRUCT_BYTE,
-                flags,
-                pointer_cnt_u8,
-                data_size_32_u8,
-            ])),
-            DataKind::Array => unimplemented!(),
-            DataKind::Forward => unimplemented!(),
-        }
+        HeaderEnc::of_struct(flags, self.pointer_cnt, self.data_size_32)
     }
 }
 
@@ -360,7 +361,7 @@ pub fn alloc0_stack(
                 return None
             }
             header_enc.write_to(p_init, data);
-            state.young_top = p_end;
+            state.stack_top_data = p_end;
             debug_assert!(p_end > p_return);
             debug_assert!(p_return > p_init);
             Some(p_return)

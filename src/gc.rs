@@ -157,16 +157,12 @@ struct GcState {
 }
 
 impl GcState {
-    fn stack_len(&self) -> WordSize {
-        unimplemented!()
+    fn stack_len(&self, conf: &GcConf) -> WordSize {
+        (self.stack_top_data - conf.stack_start()).whole_words()
     }
 
-    fn young_side(&self) -> Side {
-        unimplemented!()
-    }
-
-    fn young_len(&self) -> WordSize {
-        unimplemented!()
+    fn young_len(&self, conf: &GcConf) -> WordSize {
+        (self.young_top - conf.young_side_start(self.young_side)).whole_words()
     }
 
     fn old_len(&self) -> WordSize {
@@ -209,6 +205,10 @@ impl Pointer {
 
     fn null() -> Self {
         return Pointer(0)
+    }
+
+    fn aligned_down(self) -> Self {
+        Pointer((self.0 / WORD_SIZE.0) * WORD_SIZE.0)
     }
 }
 
@@ -261,6 +261,11 @@ impl Data {
     pub fn len(&self) -> WordSize {
         WordSize((self.mem.len() / 4).try_into().unwrap())
     }
+
+    pub fn read_i32(&self, index: Pointer) -> AddrNr {
+        debug_assert!(index != Pointer::null(), "cannot read from null pointer");
+        self.mem[index.0 as usize]
+    }
 }
 
 impl Index<Pointer> for Data {
@@ -268,6 +273,7 @@ impl Index<Pointer> for Data {
 
     fn index(&self, index: Pointer) -> &Self::Output {
         debug_assert!(index != Pointer::null(), "cannot read from null pointer");
+        //TODO @mark: should be in bytes, i.e. get the 9th byte should lookup index 2 and take first byte of that
         &self.mem[index.0 as usize]
     }
 }
@@ -275,6 +281,7 @@ impl Index<Pointer> for Data {
 impl IndexMut<Pointer> for Data {
     fn index_mut(&mut self, index: Pointer) -> &mut Self::Output {
         debug_assert!(index != Pointer::null(), "cannot write to null pointer");
+        //TODO @mark: should be in bytes, i.e. get the 9th byte should lookup index 2 and take first byte of that
         &mut self.mem[index.0 as usize]
     }
 }
@@ -413,7 +420,11 @@ pub fn young_heap_size() -> WordSize {
 }
 
 pub fn stack_size() -> WordSize {
-    unimplemented!()
+    GC_CONF.with_borrow(|conf| {
+        GC_STATE.with_borrow(|state| {
+            state.stack_top_data - conf.stack_start()
+        })
+    }).whole_words()
 }
 
 #[cfg(test)]
@@ -444,13 +455,32 @@ fn reset() {
 
 #[cfg(test)]
 fn print_memory() {
+    fn print_4nrs(data: &Data, ix: Pointer) {
+        let val = data[ix];
+        if val == 252645135 {
+            println!("{ix}:\tinit");
+        } else {
+            let bytes = i32::to_le_bytes(val);
+            println!("{ix}:\t{}\t{}\t{}\t{}", bytes[0], bytes[1], bytes[2], bytes[3]);
+        }
+    }
     GC_CONF.with_borrow(|conf| {
         GC_STATE.with_borrow(|state| {
             DATA.with_borrow(|data| {
-                println!("stack ({} / {} words):", state.stack_len(), conf.stack_capacity);
-                //TODO @mark:
-                println!("young heap ({:?}, {} / {} words):", state.young_side, state.stack_len(), conf.stack_capacity);
-                todo!();
+                dbg!(&data.mem[..100]); //TODO @mark: TEMPORARY! REMOVE THIS!
+                //TODO @mark: wrong array access, we mix word indexing and byte indexing; wasm uses words
+                println!("stack ({} / {} words):", state.stack_len(conf), conf.stack_capacity);
+                let mut ws = conf.stack_start().aligned_down();
+                while ws < state.stack_top_data {
+                    print_4nrs(data, ws);
+                    ws = ws + WordSize(1).bytes();
+                }
+                println!("young heap ({:?}, {} / {} words):", state.young_side, state.young_len(conf), conf.young_side_capacity);
+                let mut ws = conf.young_side_start(state.young_side).aligned_down();
+                while ws < state.young_top {
+                    print_4nrs(data, ws);
+                    ws = ws + WordSize(1).bytes();
+                }
             });
         });
     });
@@ -464,6 +494,7 @@ fn alloc_data_on_heap() {
     DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
     assert_eq!(subsequent - orig, ByteSize(16));
     assert_eq!(young_heap_size(), WordSize(8));
+    assert_eq!(stack_size(), WordSize(0));
 }
 
 #[test]
@@ -473,9 +504,11 @@ fn alloc_data_on_stack() {
     let orig = alloc_stack(WordSize(1), WordSize(2));
     let subsequent = alloc_stack(WordSize(2), WordSize(1));
     DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
+    print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
     assert_eq!(subsequent - orig, ByteSize(16));
-    assert_eq!(young_heap_size(), WordSize(8));
+    assert_eq!(stack_size(), WordSize(8));
     stack_frame_pop();
+    assert_eq!(stack_size(), WordSize(0));
     assert_eq!(young_heap_size(), WordSize(0));
 
 }

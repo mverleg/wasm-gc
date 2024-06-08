@@ -102,7 +102,8 @@ impl GcConf {
 
 #[derive(Debug)]
 struct GcState {
-    stack_top: Pointer,
+    stack_top_frame: Pointer,
+    stack_top_data: Pointer,
     young_side: Side,
     young_top: Pointer,
     old_top: Pointer,
@@ -140,6 +141,12 @@ impl WordSize {
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct Pointer(AddrNr);
+
+impl Pointer {
+    fn null() -> Self {
+        return Pointer(0)
+    }
+}
 
 impl Sub<Pointer> for Pointer {
     type Output = ByteSize;
@@ -208,7 +215,8 @@ thread_local! {
     static GC_STATE: RefCell<GcState> = {
         GC_CONF.with_borrow(|conf|
             RefCell::new(GcState {
-                stack_top: conf.stack_start(),
+                stack_top_frame: conf.stack_start(),
+                stack_top_data: Pointer::null(),
                 young_side: Side::Left,
                 young_top: conf.young_side_start(),
                 old_top: conf.old_start(),
@@ -282,11 +290,49 @@ pub fn alloc0_stack(
     unimplemented!()
 }
 
+/// The first word of a stack frame is the address of the previous one (0x0 for bottom)
+/// Note that it is _not_ assumed that stack frames have statically known size
+pub fn stack_frame_push() {
+    unimplemented!()
+}
+
+pub fn stack_frame_pop() {
+    unimplemented!()
+}
+
+pub fn young_heap_size() -> WordSize {
+    unimplemented!()
+}
+
+pub fn stack_size() -> WordSize {
+    unimplemented!()
+}
+
+#[cfg(test)]
+pub fn reset() {
+    unimplemented!()
+}
 
 #[test]
 fn alloc_data_on_heap() {
+    reset();
     let orig = alloc_heap(WordSize(1), WordSize(2), false);
     let subsequent = alloc_heap(WordSize(2), WordSize(1), false);
     DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
     assert_eq!(subsequent - orig, ByteSize(16));
+    assert_eq!(young_heap_size(), WordSize(8));
+}
+
+#[test]
+fn alloc_data_on_stack() {
+    reset();
+    stack_frame_push();
+    let orig = alloc_stack(WordSize(1), WordSize(2), false);
+    let subsequent = alloc_stack(WordSize(2), WordSize(1), false);
+    DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
+    assert_eq!(subsequent - orig, ByteSize(16));
+    assert_eq!(young_heap_size(), WordSize(8));
+    stack_frame_pop();
+    assert_eq!(young_heap_size(), WordSize(0));
+
 }

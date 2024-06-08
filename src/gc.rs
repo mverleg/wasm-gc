@@ -217,12 +217,14 @@ impl Index<Pointer> for Data {
     type Output = AddrNr;
 
     fn index(&self, index: Pointer) -> &Self::Output {
+        debug_assert!(index != Pointer::null(), "cannot read from null pointer");
         &self.mem[index.0 as usize]
     }
 }
 
 impl IndexMut<Pointer> for Data {
     fn index_mut(&mut self, index: Pointer) -> &mut Self::Output {
+        debug_assert!(index != Pointer::null(), "cannot write to null pointer");
         &mut self.mem[index.0 as usize]
     }
 }
@@ -312,19 +314,11 @@ pub fn alloc0_stack(
 /// The first word of a stack frame is the address of the previous one (0x0 for bottom)
 /// Note that it is _not_ assumed that stack frames have statically known size
 pub fn stack_frame_push() {
-    GC_CONF.with_borrow(|conf| {
-        GC_STATE.with_borrow_mut(|state| {
-            DATA.with_borrow_mut(|data| {
-                if state.stack_top_data == Pointer::null() {
-                    state.stack_top_frame =  conf.stack_start();
-                    data[state.stack_top_frame] = 0;
-                    state.stack_top_data = state.stack_top_frame + WORD_SIZE;
-                } else {
-                    data[state.stack_top_data] = state.stack_top_frame.as_data();
-                    state.stack_top_frame = state.stack_top_data;
-                    state.stack_top_data = state.stack_top_data + WORD_SIZE;
-                }
-            });
+    GC_STATE.with_borrow_mut(|state| {
+        DATA.with_borrow_mut(|data| {
+            data[state.stack_top_data] = state.stack_top_frame.as_data();
+            state.stack_top_frame = state.stack_top_data;
+            state.stack_top_data = state.stack_top_data + WORD_SIZE;
         });
     });
 }
@@ -354,8 +348,8 @@ pub fn reset() {
     });
     GC_CONF.with_borrow(|conf| {
         GC_STATE.with_borrow_mut(|state| *state = GcState {
-            stack_top_frame: conf.stack_start(),
-            stack_top_data: Pointer::null(),
+            stack_top_frame: Pointer::null(),
+            stack_top_data: conf.stack_start(),
             young_side: Side::Left,
             young_top: conf.young_side_start(Side::Left),
             old_top: conf.old_start(),

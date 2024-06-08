@@ -5,6 +5,8 @@ use ::std::ops::Index;
 use ::std::ops::IndexMut;
 use ::std::ops::Mul;
 use ::std::ops::Sub;
+use std::fmt;
+use std::fmt::Formatter;
 
 type AddrNr = i32;
 
@@ -191,6 +193,12 @@ impl WordSize {
     }
 }
 
+impl fmt::Display for WordSize {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct Pointer(AddrNr);
 
@@ -198,11 +206,15 @@ impl Pointer {
     fn as_data(self) -> AddrNr {
         self.0
     }
-}
 
-impl Pointer {
     fn null() -> Self {
         return Pointer(0)
+    }
+}
+
+impl fmt::Display for Pointer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "x{}", self.0)
     }
 }
 
@@ -320,7 +332,7 @@ pub fn alloc0_heap(
             let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
             if p_end > young_side_end {
                 //TODO @mark: this should GC to cleanup / move to old heap
-                println!("debug: young heap {:?} is full, {:?} > {:?}", state.young_side, p_end, young_side_end);
+                println!("debug: young heap {:?} is full, {} > {}", state.young_side, p_end, young_side_end);
                 return None
             }
             header_enc.write_to(p_init, data);
@@ -357,7 +369,7 @@ pub fn alloc0_stack(
             let p_return = p_init + header_enc.len();
             let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
             if p_end > stack_end {
-                println!("debug: stack overflowed, {:?} > {:?}", p_end, stack_end);
+                println!("debug: stack overflowed, {} > {}", p_end, stack_end);
                 return None
             }
             header_enc.write_to(p_init, data);
@@ -405,7 +417,7 @@ pub fn stack_size() -> WordSize {
 }
 
 #[cfg(test)]
-pub fn reset() {
+fn reset() {
     GC_CONF.with_borrow_mut(|conf| *conf = GcConf {
         stack_capacity: WordSize(1024),
         young_side_capacity: WordSize(16384),
@@ -426,6 +438,20 @@ pub fn reset() {
             } else {
                 data.mem.fill(0x0F0F0F0F);
             }
+        });
+    });
+}
+
+#[cfg(test)]
+fn print_memory() {
+    GC_CONF.with_borrow(|conf| {
+        GC_STATE.with_borrow(|state| {
+            DATA.with_borrow(|data| {
+                println!("stack ({} / {} words):", state.stack_len(), conf.stack_capacity);
+                //TODO @mark:
+                println!("young heap ({:?}, {} / {} words):", state.young_side, state.stack_len(), conf.stack_capacity);
+                todo!();
+            });
         });
     });
 }

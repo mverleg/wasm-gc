@@ -1,10 +1,10 @@
 use ::std::cell::RefCell;
 use ::std::mem::size_of;
 use ::std::ops::Add;
-use ::std::ops::Mul;
-use ::std::ops::Sub;
 use ::std::ops::Index;
 use ::std::ops::IndexMut;
+use ::std::ops::Mul;
+use ::std::ops::Sub;
 
 type AddrNr = i32;
 
@@ -87,12 +87,19 @@ impl GcConf {
         OFFSET
     }
 
-    fn young_side_start(&self) -> Pointer {
+    fn young_overall_start(&self) -> Pointer {
         self.stack_start() + self.stack_capacity.bytes()
     }
 
+    fn young_side_start(&self, side: Side) -> Pointer {
+        match side {
+            Side::Left => self.young_overall_start(),
+            Side::Right => self.young_overall_start() + self.young_side_capacity.bytes(),
+        }
+    }
+
     fn old_start(&self) -> Pointer {
-        self.young_side_start() + self.young_side_capacity.bytes() * 2
+        self.young_overall_start() + self.young_side_capacity.bytes() * 2
     }
 
     fn end_of_memory(&self) -> Pointer {
@@ -130,6 +137,13 @@ impl GcState {
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct ByteSize(AddrNr);
 
+impl ByteSize {
+    fn whole_words(self) -> WordSize {
+        debug_assert!(self.0 % 4 == 0);
+        WordSize(self.0 / 4)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct WordSize(AddrNr);
 
@@ -141,6 +155,12 @@ impl WordSize {
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct Pointer(AddrNr);
+
+impl Pointer {
+    fn as_data(self) -> AddrNr {
+        self.0
+    }
+}
 
 impl Pointer {
     fn null() -> Self {
@@ -216,20 +236,16 @@ thread_local! {
         })
     ;
     static GC_STATE: RefCell<GcState> = {
-        GC_CONF.with_borrow(|conf|
-            RefCell::new(GcState {
-                stack_top_frame: Pointer(0),
-                stack_top_data: Pointer(0),
-                young_side: Side::Left,
-                young_top: Pointer(0),
-                old_top: Pointer(0),
-            })
-        )
+        RefCell::new(GcState {
+            stack_top_frame: Pointer(0),
+            stack_top_data: Pointer(0),
+            young_side: Side::Left,
+            young_top: Pointer(0),
+            old_top: Pointer(0),
+        })
     };
     static DATA: RefCell<Data> = {
-        GC_CONF.with_borrow(|conf|
-            RefCell::new(Data { mem: Vec::new() })
-        )
+        RefCell::new(Data { mem: Vec::new() })
     };
 }
 
@@ -296,7 +312,21 @@ pub fn alloc0_stack(
 /// The first word of a stack frame is the address of the previous one (0x0 for bottom)
 /// Note that it is _not_ assumed that stack frames have statically known size
 pub fn stack_frame_push() {
-    unimplemented!()
+    GC_CONF.with_borrow(|conf| {
+        GC_STATE.with_borrow_mut(|state| {
+            DATA.with_borrow_mut(|data| {
+                if state.stack_top_data == Pointer::null() {
+                    state.stack_top_frame =  conf.stack_start();
+                    data[state.stack_top_frame] = 0;
+                    state.stack_top_data = state.stack_top_frame + WORD_SIZE;
+                } else {
+                    data[state.stack_top_data] = state.stack_top_frame.as_data();
+                    state.stack_top_frame = state.stack_top_data;
+                    state.stack_top_data = state.stack_top_data + WORD_SIZE;
+                }
+            });
+        });
+    });
 }
 
 pub fn stack_frame_pop() {
@@ -304,7 +334,11 @@ pub fn stack_frame_pop() {
 }
 
 pub fn young_heap_size() -> WordSize {
-    unimplemented!()
+    GC_CONF.with_borrow(|conf| {
+        GC_STATE.with_borrow(|state| {
+            state.young_top - conf.young_side_start(state.young_side)
+        })
+    }).whole_words()
 }
 
 pub fn stack_size() -> WordSize {
@@ -313,22 +347,17 @@ pub fn stack_size() -> WordSize {
 
 #[cfg(test)]
 pub fn reset() {
-    GC_CONF.with_borrow_mut(|conf| {
-        let stack_capacity = WordSize(1024);
-        let young_side_capacity = WordSize(16384);
-        let old_capacity = WordSize(16384);
-        *conf = GcConf {
-            stack_capacity,
-            young_side_capacity,
-            old_capacity,
-        }
+    GC_CONF.with_borrow_mut(|conf| *conf = GcConf {
+        stack_capacity: WordSize(1024),
+        young_side_capacity: WordSize(16384),
+        old_capacity: WordSize(16384),
     });
     GC_CONF.with_borrow(|conf| {
         GC_STATE.with_borrow_mut(|state| *state = GcState {
             stack_top_frame: conf.stack_start(),
             stack_top_data: Pointer::null(),
             young_side: Side::Left,
-            young_top: conf.young_side_start(),
+            young_top: conf.young_side_start(Side::Left),
             old_top: conf.old_start(),
         });
         DATA.with_borrow_mut(|data| {

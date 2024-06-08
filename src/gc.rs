@@ -12,10 +12,23 @@ const WORD_SIZE: ByteSize = ByteSize(4);
 const STRUCT_BYTE: u8 = 1;
 
 #[derive(Debug)]
-struct StackHeader {}
+struct StackHeader {
+    data_kind: DataKind,
+    pointer_cnt: WordSize,
+    data_size_32: WordSize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum HeaderEnc { Small(AddrNr), Big(AddrNr, AddrNr) }
+
+impl HeaderEnc {
+    fn len(self) -> ByteSize {
+        match self {
+            HeaderEnc::Small(_) => ByteSize(1),
+            HeaderEnc::Big(_, _) => ByteSize(2),
+        }
+    }
+}
 
 impl StackHeader {
     fn encode(self) -> HeaderEnc {
@@ -96,6 +109,10 @@ impl GcConf {
             Side::Left => self.young_overall_start(),
             Side::Right => self.young_overall_start() + self.young_side_capacity.bytes(),
         }
+    }
+
+    fn young_side_end(&self, side: Side) -> Pointer {
+        self.young_side_start(side) + self.young_side_capacity.bytes()
     }
 
     fn old_start(&self) -> Pointer {
@@ -256,7 +273,18 @@ pub fn alloc_heap(
     data_size_32: WordSize,
     pointers_mutable: bool,
 ) -> Pointer {
+    alloc0_heap(pointer_cnt, data_size_32, pointers_mutable)
+        .expect("out of memory (heap)")
+}
+
+pub fn alloc0_heap(
+    pointer_cnt: WordSize,
+    data_size_32: WordSize,
+    pointers_mutable: bool,
+) -> Option<Pointer> {
     GC_STATE.with_borrow_mut(|state| {
+        let young_side_end = GC_CONF.with_borrow_mut(|conf|
+            conf.young_side_end(state.young_side));
         DATA.with_borrow_mut(|data| {
             let p_init = state.young_top;
             let header = YoungHeapHeader {
@@ -277,22 +305,19 @@ pub fn alloc_heap(
                     p_init + WORD_SIZE * 2
                 }
             };
+            //TODO @mark: don't write header before checking OOM! ^
             let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
+            if p_end > young_side_end {
+                //TODO @mark: this should GC to cleanup / move to old heap
+                println!("debug: young heap {:?} is full", state.young_side);
+                return None
+            }
             state.young_top = p_end;
-            println!("{p_init:?} , {p_return:?} , {p_end:?}"); //TODO @mark: TEMPORARY! REMOVE THIS!
             debug_assert!(p_end > p_return);
             debug_assert!(p_return > p_init);
-            p_return
+            Some(p_return)
         })
     })
-}
-
-pub fn alloc0_heap(
-    pointer_cnt: WordSize,
-    data_size_32: WordSize,
-    pointers_mutable: bool,
-) -> Option<Pointer> {
-    unimplemented!()
 }
 
 pub fn alloc_stack(

@@ -141,11 +141,19 @@ impl WordSize {
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 struct Pointer(AddrNr);
 
-impl Sub for Pointer {
+impl Sub<Pointer> for Pointer {
     type Output = ByteSize;
 
     fn sub(self, rhs: Self) -> Self::Output {
         ByteSize(self.0 - rhs.0)
+    }
+}
+
+impl Sub<ByteSize> for Pointer {
+    type Output = Pointer;
+
+    fn sub(self, rhs: ByteSize) -> Self::Output {
+        Pointer(self.0 - rhs.0)
     }
 }
 
@@ -277,7 +285,8 @@ pub fn alloc0_stack(
 
 #[test]
 fn alloc_data_on_heap() {
-    let orig = alloc_heap(WordSize(0), WordSize(2), false);
-    let subsequent = alloc_heap(WordSize(0), WordSize(2), false);
-    assert_eq!(subsequent - orig, ByteSize(12));
+    let orig = alloc_heap(WordSize(1), WordSize(2), false);
+    let subsequent = alloc_heap(WordSize(2), WordSize(1), false);
+    DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
+    assert_eq!(subsequent - orig, ByteSize(16));
 }

@@ -1,12 +1,12 @@
 use ::std::cell::RefCell;
+use ::std::fmt;
+use ::std::fmt::Formatter;
 use ::std::mem::size_of;
 use ::std::ops::Add;
 use ::std::ops::Index;
 use ::std::ops::IndexMut;
 use ::std::ops::Mul;
 use ::std::ops::Sub;
-use std::fmt;
-use std::fmt::Formatter;
 
 type AddrNr = i32;
 
@@ -64,6 +64,7 @@ impl StackHeader {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum DataKind { Struct, Array, Forward }
+//TODO @mark: dynamic dispatch?
 //TODO @mark: special kind for structs with more than 256 fields, and arrays of the same?
 
 #[derive(Debug)]
@@ -171,7 +172,7 @@ impl GcState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-struct ByteSize(AddrNr);
+pub struct ByteSize(AddrNr);
 
 impl ByteSize {
     fn whole_words(self) -> WordSize {
@@ -181,7 +182,7 @@ impl ByteSize {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-struct WordSize(AddrNr);
+pub struct WordSize(AddrNr);
 
 impl WordSize {
     fn bytes(self) -> ByteSize {
@@ -196,7 +197,7 @@ impl fmt::Display for WordSize {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-struct Pointer(AddrNr);
+pub struct Pointer(AddrNr);
 
 impl Pointer {
     fn as_data(self) -> AddrNr {
@@ -450,59 +451,64 @@ fn reset() {
 }
 
 #[cfg(test)]
-fn print_memory() {
-    fn print_4nrs(data: &Data, ix: Pointer) {
-        let val = data[ix];
-        if val == 252645135 {
-            println!("{ix}:\tinit");
-        } else {
-            let bytes = i32::to_le_bytes(val);
-            println!("{ix}:\t{}\t{}\t{}\t{}", bytes[0], bytes[1], bytes[2], bytes[3]);
+mod tests {
+    use super::*;
+
+    fn print_memory() {
+        fn print_4nrs(data: &Data, ix: Pointer) {
+            let val = data[ix];
+            if val == 252645135 {
+                println!("{ix}:\tinit");
+            } else {
+                let bytes = i32::to_le_bytes(val);
+                println!("{ix}:\t{}\t{}\t{}\t{}", bytes[0], bytes[1], bytes[2], bytes[3]);
+            }
         }
-    }
-    GC_CONF.with_borrow(|conf| {
-        GC_STATE.with_borrow(|state| {
-            DATA.with_borrow(|data| {
-                println!("stack ({} / {} words):", state.stack_len(conf), conf.stack_capacity);
-                let mut ws = conf.stack_start().aligned_down();
-                while ws < state.stack_top_data {
-                    print_4nrs(data, ws);
-                    ws = ws + WORD_SIZE;
-                }
-                println!("young heap ({:?}, {} / {} words):", state.young_side, state.young_len(conf), conf.young_side_capacity);
-                let mut ws = conf.young_side_start(state.young_side).aligned_down();
-                while ws < state.young_top {
-                    print_4nrs(data, ws);
-                    ws = ws + WORD_SIZE;
-                }
+        GC_CONF.with_borrow(|conf| {
+            GC_STATE.with_borrow(|state| {
+                DATA.with_borrow(|data| {
+                    println!("stack ({} / {} words):", state.stack_len(conf), conf.stack_capacity);
+                    let mut ws = conf.stack_start().aligned_down();
+                    while ws < state.stack_top_data {
+                        print_4nrs(data, ws);
+                        ws = ws + WORD_SIZE;
+                    }
+                    println!("young heap ({:?}, {} / {} words):", state.young_side, state.young_len(conf), conf.young_side_capacity);
+                    let mut ws = conf.young_side_start(state.young_side).aligned_down();
+                    while ws < state.young_top {
+                        print_4nrs(data, ws);
+                        ws = ws + WORD_SIZE;
+                    }
+                });
             });
         });
-    });
-}
+    }
 
-#[test]
-fn alloc_data_on_heap() {
-    reset();
-    let orig = alloc_heap(WordSize(1), WordSize(2), false);
-    let subsequent = alloc_heap(WordSize(2), WordSize(1), false);
-    DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
-    assert_eq!(subsequent - orig, ByteSize(16));
-    assert_eq!(young_heap_size(), WordSize(8));
-    assert_eq!(stack_size(), WordSize(0));
-}
+    #[test]
+    fn alloc_data_on_heap() {
+        reset();
+        let orig = alloc_heap(WordSize(1), WordSize(2), false);
+        let subsequent = alloc_heap(WordSize(2), WordSize(1), false);
+        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
+        assert_eq!(subsequent - orig, ByteSize(16));
+        assert_eq!(young_heap_size(), WordSize(8));
+        assert_eq!(stack_size(), WordSize(0));
+    }
 
-#[test]
-fn alloc_data_on_stack() {
-    reset();
-    stack_frame_push();
-    let orig = alloc_stack(WordSize(1), WordSize(2));
-    let subsequent = alloc_stack(WordSize(2), WordSize(1));
-    DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
-    print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
-    assert_eq!(subsequent - orig, ByteSize(16));
-    assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 3));
-    stack_frame_pop();
-    assert_eq!(stack_size(), WordSize(0));
-    assert_eq!(young_heap_size(), WordSize(0));
-
+    #[test]
+    fn alloc_data_on_stack() {
+        reset();
+        stack_frame_push();
+        let orig = alloc_stack(WordSize(1), WordSize(2));
+        stack_frame_push();
+        let subsequent = alloc_stack(WordSize(2), WordSize(1));
+        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
+        assert_eq!(subsequent - orig, WORD_SIZE * 5);
+        assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));
+        stack_frame_pop();
+        assert_eq!(stack_size(), WordSize(1 + 1 + 3));
+        stack_frame_pop();
+        assert_eq!(stack_size(), WordSize(0));
+        assert_eq!(young_heap_size(), WordSize(0));
+    }
 }

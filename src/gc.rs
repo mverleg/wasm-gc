@@ -400,7 +400,7 @@ pub fn stack_frame_pop() {
     GC_STATE.with_borrow_mut(|state| {
         DATA.with_borrow_mut(|data| {
             let prev_frame = data[state.stack_top_frame];
-            assert_ne!(prev_frame, 0, "stack is empty, cannot pop frame");
+            assert_ne!(state.stack_top_frame, Pointer::null(), "stack is empty, cannot pop frame");
             state.stack_top_data = state.stack_top_frame;
             state.stack_top_frame = Pointer(prev_frame);
         });
@@ -500,7 +500,7 @@ fn alloc_data_on_stack() {
     DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
     print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
     assert_eq!(subsequent - orig, ByteSize(16));
-    assert_eq!(stack_size(), WordSize(8));
+    assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 3));
     stack_frame_pop();
     assert_eq!(stack_size(), WordSize(0));
     assert_eq!(young_heap_size(), WordSize(0));

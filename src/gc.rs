@@ -262,10 +262,6 @@ impl Data {
         WordSize((self.mem.len() / 4).try_into().unwrap())
     }
 
-    pub fn read_i32(&self, index: Pointer) -> AddrNr {
-        debug_assert!(index != Pointer::null(), "cannot read from null pointer");
-        self.mem[index.0 as usize]
-    }
 }
 
 impl Index<Pointer> for Data {
@@ -273,16 +269,16 @@ impl Index<Pointer> for Data {
 
     fn index(&self, index: Pointer) -> &Self::Output {
         debug_assert!(index != Pointer::null(), "cannot read from null pointer");
-        //TODO @mark: should be in bytes, i.e. get the 9th byte should lookup index 2 and take first byte of that
-        &self.mem[index.0 as usize]
+        assert!(index.0 % WORD_SIZE.0 == 0, "unaligned read not impl yet (might not be needed even though wasm can do it)");
+        &self.mem[(index.0 / WORD_SIZE.0) as usize]
     }
 }
 
 impl IndexMut<Pointer> for Data {
     fn index_mut(&mut self, index: Pointer) -> &mut Self::Output {
         debug_assert!(index != Pointer::null(), "cannot write to null pointer");
-        //TODO @mark: should be in bytes, i.e. get the 9th byte should lookup index 2 and take first byte of that
-        &mut self.mem[index.0 as usize]
+        assert!(index.0 % WORD_SIZE.0 == 0, "unaligned read not impl yet (might not be needed even though wasm can do it)");
+        &mut self.mem[(index.0 / WORD_SIZE.0) as usize]
     }
 }
 
@@ -467,19 +463,17 @@ fn print_memory() {
     GC_CONF.with_borrow(|conf| {
         GC_STATE.with_borrow(|state| {
             DATA.with_borrow(|data| {
-                dbg!(&data.mem[..100]); //TODO @mark: TEMPORARY! REMOVE THIS!
-                //TODO @mark: wrong array access, we mix word indexing and byte indexing; wasm uses words
                 println!("stack ({} / {} words):", state.stack_len(conf), conf.stack_capacity);
                 let mut ws = conf.stack_start().aligned_down();
                 while ws < state.stack_top_data {
                     print_4nrs(data, ws);
-                    ws = ws + WordSize(1).bytes();
+                    ws = ws + WORD_SIZE;
                 }
                 println!("young heap ({:?}, {} / {} words):", state.young_side, state.young_len(conf), conf.young_side_capacity);
                 let mut ws = conf.young_side_start(state.young_side).aligned_down();
                 while ws < state.young_top {
                     print_4nrs(data, ws);
-                    ws = ws + WordSize(1).bytes();
+                    ws = ws + WORD_SIZE;
                 }
             });
         });

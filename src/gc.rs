@@ -428,6 +428,9 @@ pub fn stack_size() -> WordSize {
 mod tests {
     use super::*;
 
+    const ONE_WORD: WordSize = WordSize(1);
+    const TWO_WORDS: WordSize = WordSize(2);
+
     fn reset() {
         GC_CONF.with_borrow_mut(|conf| *conf = GcConf {
             stack_capacity: WordSize(1024),
@@ -509,8 +512,8 @@ mod tests {
     #[test]
     fn alloc_data_on_heap() {
         reset();
-        let orig = alloc_heap(WordSize(1), WordSize(2), false);
-        let subsequent = alloc_heap(WordSize(2), WordSize(1), false);
+        let orig = alloc_heap(ONE_WORD, TWO_WORDS, false);
+        let subsequent = alloc_heap(TWO_WORDS, ONE_WORD, false);
         DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
         assert_eq!(subsequent - orig, ByteSize(16));
         assert_eq!(young_heap_size(), WordSize(8));
@@ -521,9 +524,9 @@ mod tests {
     fn alloc_data_on_stack() {
         reset();
         stack_frame_push();
-        let orig = alloc_stack(WordSize(1), WordSize(2));
+        let orig = alloc_stack(ONE_WORD, TWO_WORDS);
         stack_frame_push();
-        let subsequent = alloc_stack(WordSize(2), WordSize(1));
+        let subsequent = alloc_stack(TWO_WORDS, ONE_WORD);
         DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
         assert_eq!(subsequent - orig, WORD_SIZE * 5);
         assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));
@@ -537,13 +540,14 @@ mod tests {
     #[test]
     fn gc_cleans_all_if_unreferenced() {
         reset();
-        //TODO @mark:
+        fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
         stack_frame_push();
-        let stack1 = fill_zeros(alloc_stack(WordSize(1), WordSize(2)));
+        fill_zeros(alloc_stack(ONE_WORD, TWO_WORDS));
         stack_frame_push();
-        let stack2 = fill_zeros(alloc_stack(WordSize(1), WordSize(2)));
+        fill_zeros(alloc_stack(TWO_WORDS, ONE_WORD));
+        fill_zeros(alloc_heap(TWO_WORDS, ONE_WORD, true));
         todo!();
-        // let subsequent = alloc_stack(WordSize(2), WordSize(1));
+        // let subsequent = alloc_stack(TWO_WORDS, ONE_WORD);
         // DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
         // assert_eq!(subsequent - orig, WORD_SIZE * 5);
         // assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));

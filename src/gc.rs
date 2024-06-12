@@ -78,8 +78,8 @@ struct YoungHeapHeader {
 
 fn mask(is_on: bool, ix: u8) -> u8 {
     assert!(ix < 8);
-    if ! is_on {
-        return 0
+    if !is_on {
+        return 0;
     } else {
         1 << ix
     }
@@ -205,7 +205,7 @@ impl Pointer {
     }
 
     fn null() -> Self {
-        return Pointer(0)
+        return Pointer(0);
     }
 
     fn aligned_down(self) -> Self {
@@ -262,7 +262,6 @@ impl Data {
     pub fn len(&self) -> WordSize {
         WordSize((self.mem.len() / 4).try_into().unwrap())
     }
-
 }
 
 impl Index<Pointer> for Data {
@@ -337,7 +336,7 @@ pub fn alloc0_heap(
             if p_end > young_side_end {
                 //TODO @mark: this should GC to cleanup / move to old heap
                 println!("debug: young heap {:?} is full, {} > {}", state.young_side, p_end, young_side_end);
-                return None
+                return None;
             }
             header_enc.write_to(p_init, data);
             state.young_top = p_end;
@@ -356,6 +355,7 @@ pub fn alloc_stack(
         .expect("stack overflow")
 }
 
+//TODO @mark: maybe at least pointers should be initialized as 0? otherwise calling code must initialize all pointers before doing another alloc, lest it triggers GC
 pub fn alloc0_stack(
     pointer_cnt: WordSize,
     data_size_32: WordSize,
@@ -374,7 +374,7 @@ pub fn alloc0_stack(
             let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
             if p_end > stack_end {
                 println!("debug: stack overflowed, {} > {}", p_end, stack_end);
-                return None
+                return None;
             }
             header_enc.write_to(p_init, data);
             state.stack_top_data = p_end;
@@ -425,34 +425,33 @@ pub fn stack_size() -> WordSize {
 }
 
 #[cfg(test)]
-fn reset() {
-    GC_CONF.with_borrow_mut(|conf| *conf = GcConf {
-        stack_capacity: WordSize(1024),
-        young_side_capacity: WordSize(16384),
-        old_capacity: WordSize(16384),
-    });
-    GC_CONF.with_borrow(|conf| {
-        GC_STATE.with_borrow_mut(|state| *state = GcState {
-            stack_top_frame: Pointer::null(),
-            stack_top_data: conf.stack_start(),
-            young_side: Side::Left,
-            young_top: conf.young_side_start(Side::Left),
-            old_top: conf.old_start(),
-        });
-        DATA.with_borrow_mut(|data| {
-            if (Pointer::null() + data.len().bytes()) < conf.end_of_memory() {
-                // in debug mode 0x0F0F0F0F, usually 0
-                *data = Data { mem: vec![0x0F0F0F0F; conf.end_of_memory().0 as usize] };
-            } else {
-                data.mem.fill(0x0F0F0F0F);
-            }
-        });
-    });
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
+
+    fn reset() {
+        GC_CONF.with_borrow_mut(|conf| *conf = GcConf {
+            stack_capacity: WordSize(1024),
+            young_side_capacity: WordSize(16384),
+            old_capacity: WordSize(16384),
+        });
+        GC_CONF.with_borrow(|conf| {
+            GC_STATE.with_borrow_mut(|state| *state = GcState {
+                stack_top_frame: Pointer::null(),
+                stack_top_data: conf.stack_start(),
+                young_side: Side::Left,
+                young_top: conf.young_side_start(Side::Left),
+                old_top: conf.old_start(),
+            });
+            DATA.with_borrow_mut(|data| {
+                if (Pointer::null() + data.len().bytes()) < conf.end_of_memory() {
+                    // in debug mode 0x0F0F0F0F, usually 0
+                    *data = Data { mem: vec![0x0F0F0F0F; conf.end_of_memory().0 as usize] };
+                } else {
+                    data.mem.fill(0x0F0F0F0F);
+                }
+            });
+        });
+    }
 
     fn print_memory() {
         fn print_4nrs(data: &Data, ix: Pointer) {
@@ -484,6 +483,28 @@ mod tests {
         });
     }
 
+    fn fill_zeros(obj_addr: Pointer) -> Pointer {
+        DATA.with_borrow_mut(|data| {
+            let hdr = data[obj_addr - WORD_SIZE];
+            let pointer_cnt: WordSize = read_pointer_cnt(hdr);
+            let data_size_32: WordSize = read_data_size(hdr);
+            let mut i = obj_addr;
+            let end = obj_addr + pointer_cnt.bytes() + data_size_32.bytes();
+            while i < end {
+                data[i] = 0;
+            }
+            obj_addr
+        })
+    }
+
+    fn read_pointer_cnt(header: AddrNr) -> WordSize {
+        todo!()
+    }
+
+    fn read_data_size(header: AddrNr) -> WordSize {
+        todo!()
+    }
+
     #[test]
     fn alloc_data_on_heap() {
         reset();
@@ -501,6 +522,25 @@ mod tests {
         stack_frame_push();
         let orig = alloc_stack(WordSize(1), WordSize(2));
         stack_frame_push();
+        let subsequent = alloc_stack(WordSize(2), WordSize(1));
+        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
+        assert_eq!(subsequent - orig, WORD_SIZE * 5);
+        assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));
+        stack_frame_pop();
+        assert_eq!(stack_size(), WordSize(1 + 1 + 3));
+        stack_frame_pop();
+        assert_eq!(stack_size(), WordSize(0));
+        assert_eq!(young_heap_size(), WordSize(0));
+    }
+
+    #[test]
+    fn gc_cleans_all_if_unreferenced() {
+        reset();
+        //TODO @mark:
+        stack_frame_push();
+        let orig = fill_zeros(alloc_stack(WordSize(1), WordSize(2)));
+        stack_frame_push();
+        todo!();
         let subsequent = alloc_stack(WordSize(2), WordSize(1));
         DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
         assert_eq!(subsequent - orig, WORD_SIZE * 5);

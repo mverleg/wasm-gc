@@ -492,17 +492,18 @@ mod tests {
             let end = obj_addr + pointer_cnt.bytes() + data_size_32.bytes();
             while i < end {
                 data[i] = 0;
+                i = i + WORD_SIZE;
             }
-            obj_addr
-        })
+        });
+        obj_addr
     }
 
     fn read_pointer_cnt(header: AddrNr) -> WordSize {
-        todo!()
+        WordSize(header.to_le_bytes()[2] as AddrNr)
     }
 
     fn read_data_size(header: AddrNr) -> WordSize {
-        todo!()
+        WordSize(header.to_le_bytes()[3] as AddrNr)
     }
 
     #[test]
@@ -538,17 +539,18 @@ mod tests {
         reset();
         //TODO @mark:
         stack_frame_push();
-        let orig = fill_zeros(alloc_stack(WordSize(1), WordSize(2)));
+        let stack1 = fill_zeros(alloc_stack(WordSize(1), WordSize(2)));
         stack_frame_push();
+        let stack2 = fill_zeros(alloc_stack(WordSize(1), WordSize(2)));
         todo!();
-        let subsequent = alloc_stack(WordSize(2), WordSize(1));
-        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
-        assert_eq!(subsequent - orig, WORD_SIZE * 5);
-        assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));
-        stack_frame_pop();
-        assert_eq!(stack_size(), WordSize(1 + 1 + 3));
-        stack_frame_pop();
-        assert_eq!(stack_size(), WordSize(0));
-        assert_eq!(young_heap_size(), WordSize(0));
+        // let subsequent = alloc_stack(WordSize(2), WordSize(1));
+        // DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
+        // assert_eq!(subsequent - orig, WORD_SIZE * 5);
+        // assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));
+        // stack_frame_pop();
+        // assert_eq!(stack_size(), WordSize(1 + 1 + 3));
+        // stack_frame_pop();
+        // assert_eq!(stack_size(), WordSize(0));
+        // assert_eq!(young_heap_size(), WordSize(0));
     }
 }

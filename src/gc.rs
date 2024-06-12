@@ -254,6 +254,15 @@ impl Add<ByteSize> for Pointer {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Side { Left, Right }
 
+impl Side {
+    pub fn opposite(self) -> Side {
+        match self {
+            Side::Left => Side::Right,
+            Side::Right => Side::Left,
+        }
+    }
+}
+
 struct Data {
     mem: Vec<AddrNr>,
 }
@@ -408,6 +417,35 @@ pub fn stack_frame_pop() {
     });
 }
 
+pub struct FastCollectStats {
+    pub initial_young_capacity: WordSize,
+    pub initial_young_len: WordSize,
+    pub final_young_capacity: WordSize,
+    pub final_young_len: WordSize,
+    //TODO @mark: use ^
+}
+
+pub fn collect_fast() -> FastCollectStats {
+    GC_CONF.with_borrow(|conf| {
+        GC_STATE.with_borrow_mut(|state| {
+            //TODO @mark: just clean everything for now
+            let init_size = state.young_top - conf.young_side_start(state.young_side);
+            state.young_side = state.young_side.opposite();
+            state.young_top = conf.young_side_start(state.young_side);
+            FastCollectStats {
+                initial_young_capacity: conf.young_side_capacity,
+                initial_young_len: init_size.whole_words(),
+                final_young_capacity: conf.young_side_capacity,
+                final_young_len: WordSize(0),
+            }
+        })
+    })
+}
+
+pub fn collect_full() {
+    todo!();
+}
+
 pub fn young_heap_size() -> WordSize {
     GC_CONF.with_borrow(|conf| {
         GC_STATE.with_borrow(|state| {
@@ -428,6 +466,7 @@ pub fn stack_size() -> WordSize {
 mod tests {
     use super::*;
 
+    const NO_WORDS: WordSize = WordSize(0);
     const ONE_WORD: WordSize = WordSize(1);
     const TWO_WORDS: WordSize = WordSize(2);
 
@@ -517,7 +556,7 @@ mod tests {
         DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
         assert_eq!(subsequent - orig, ByteSize(16));
         assert_eq!(young_heap_size(), WordSize(8));
-        assert_eq!(stack_size(), WordSize(0));
+        assert_eq!(stack_size(), NO_WORDS);
     }
 
     #[test]
@@ -533,28 +572,28 @@ mod tests {
         stack_frame_pop();
         assert_eq!(stack_size(), WordSize(1 + 1 + 3));
         stack_frame_pop();
-        assert_eq!(stack_size(), WordSize(0));
-        assert_eq!(young_heap_size(), WordSize(0));
+        assert_eq!(stack_size(), NO_WORDS);
+        assert_eq!(young_heap_size(), NO_WORDS);
     }
 
     #[test]
-    fn gc_cleans_all_if_unreferenced() {
+    fn fast_gc_cleans_young_if_unreferenced() {
         reset();
+        let cap = GC_CONF.with_borrow(|conf| conf.young_side_capacity);
         fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
         stack_frame_push();
         fill_zeros(alloc_stack(ONE_WORD, TWO_WORDS));
         stack_frame_push();
         fill_zeros(alloc_stack(TWO_WORDS, ONE_WORD));
         fill_zeros(alloc_heap(TWO_WORDS, ONE_WORD, true));
-        todo!();
-        // let subsequent = alloc_stack(TWO_WORDS, ONE_WORD);
-        // DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
-        // assert_eq!(subsequent - orig, WORD_SIZE * 5);
-        // assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));
-        // stack_frame_pop();
-        // assert_eq!(stack_size(), WordSize(1 + 1 + 3));
-        // stack_frame_pop();
-        // assert_eq!(stack_size(), WordSize(0));
-        // assert_eq!(young_heap_size(), WordSize(0));
+        assert_eq!(young_heap_size(), WordSize(8));
+        assert_eq!(stack_size(), WordSize(10));
+        let stats = collect_fast();
+        assert_eq!(young_heap_size(), NO_WORDS);
+        assert_eq!(stack_size(), WordSize(10));
+        assert_eq!(stats.initial_young_capacity, cap);
+        assert_eq!(stats.initial_young_len, WordSize(8));
+        assert_eq!(stats.final_young_capacity, cap);
+        assert_eq!(stats.final_young_len, NO_WORDS);
     }
 }

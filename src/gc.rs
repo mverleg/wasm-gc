@@ -17,7 +17,7 @@ const STRUCT_BYTE: u8 = 1;
 struct StackHeader {
     data_kind: DataKind,
     pointer_cnt: WordSize,
-    data_size_32: WordSize,
+    size_32: WordSize,
     //TODO @mark: might be more efficient to store pointer cnt and total size; fewer additions - however it also limits total fields to 256 instead of just pointers or just data
 }
 
@@ -25,14 +25,15 @@ struct StackHeader {
 enum HeaderEnc { Small(AddrNr), Big(AddrNr, AddrNr) }
 
 impl HeaderEnc {
-    fn of_struct(flags: u8, pointer_cnt: WordSize, data_size_32: WordSize) -> Self {
-        let pointer_cnt_u8: u8 = pointer_cnt.0.try_into().unwrap();
-        let data_size_32_u8: u8 = data_size_32.0.try_into().unwrap();
+    fn of_struct(flags: u8, pointer_cnt: WordSize, size_32: WordSize) -> Self {
+        debug_assert!(pointer_cnt <= size_32, "pointer size cannot exceed total size");
+        let size_32_u8: u8 = size_32.0.try_into().expect("struct too large");
+        let pointer_cnt_u8: u8 = pointer_cnt.0.try_into().expect("should never be reached since pointer <= total");
         HeaderEnc::Small(i32::from_le_bytes([
             STRUCT_BYTE,
             flags,
             pointer_cnt_u8,
-            data_size_32_u8,
+            size_32_u8,
         ]))
     }
 
@@ -59,7 +60,7 @@ impl HeaderEnc {
 impl StackHeader {
     fn encode(self) -> HeaderEnc {
         let flags: u8 = 0;
-        HeaderEnc::of_struct(flags, self.pointer_cnt, self.data_size_32)
+        HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32)
     }
 }
 
@@ -74,7 +75,7 @@ struct YoungHeapHeader {
     gc_reachable: bool,
     pointers_mutable: bool,
     pointer_cnt: WordSize,
-    data_size_32: WordSize,
+    size_32: WordSize,
 }
 
 fn mask(is_on: bool, ix: u8) -> u8 {
@@ -90,7 +91,7 @@ impl YoungHeapHeader {
     fn encode(self) -> HeaderEnc {
         assert!(self.pointer_cnt.0 > 0 || !self.pointers_mutable);
         let flags: u8 = mask(self.gc_reachable, 0) & mask(self.pointers_mutable, 1);
-        HeaderEnc::of_struct(flags, self.pointer_cnt, self.data_size_32)
+        HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32)
     }
 }
 
@@ -316,16 +317,16 @@ thread_local! {
 
 pub fn alloc_heap(
     pointer_cnt: WordSize,
-    data_size_32: WordSize,
+    size_32: WordSize,
     pointers_mutable: bool,
 ) -> Pointer {
-    alloc0_heap(pointer_cnt, data_size_32, pointers_mutable)
+    alloc0_heap(pointer_cnt, size_32, pointers_mutable)
         .expect("out of memory (heap)")
 }
 
 pub fn alloc0_heap(
     pointer_cnt: WordSize,
-    data_size_32: WordSize,
+    size_32: WordSize,
     pointers_mutable: bool,
 ) -> Option<Pointer> {
     GC_STATE.with_borrow_mut(|state| {
@@ -338,11 +339,11 @@ pub fn alloc0_heap(
                 gc_reachable: false,
                 pointers_mutable,
                 pointer_cnt,
-                data_size_32,
+                size_32,
             };
             let header_enc = header.encode();
             let p_return = p_init + header_enc.len();
-            let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
+            let p_end = p_return + size_32.bytes();
             if p_end > young_side_end {
                 //TODO @mark: this should GC to cleanup / move to old heap
                 println!("debug: young heap {:?} is full, {} > {}", state.young_side, p_end, young_side_end);
@@ -359,16 +360,16 @@ pub fn alloc0_heap(
 
 pub fn alloc_stack(
     pointer_cnt: WordSize,
-    data_size_32: WordSize,
+    size_32: WordSize,
 ) -> Pointer {
-    alloc0_stack(pointer_cnt, data_size_32)
+    alloc0_stack(pointer_cnt, size_32)
         .expect("stack overflow")
 }
 
 //TODO @mark: maybe at least pointers should be initialized as 0? otherwise calling code must initialize all pointers before doing another alloc, lest it triggers GC
 pub fn alloc0_stack(
     pointer_cnt: WordSize,
-    data_size_32: WordSize,
+    size_32: WordSize,
 ) -> Option<Pointer> {
     GC_STATE.with_borrow_mut(|state| {
         let stack_end = GC_CONF.with_borrow_mut(|conf| conf.stack_end());
@@ -377,11 +378,11 @@ pub fn alloc0_stack(
             let header = StackHeader {
                 data_kind: DataKind::Struct,
                 pointer_cnt,
-                data_size_32,
+                size_32,
             };
             let header_enc = header.encode();
             let p_return = p_init + header_enc.len();
-            let p_end = p_return + pointer_cnt.bytes() + data_size_32.bytes();
+            let p_end = p_return + size_32.bytes();
             if p_end > stack_end {
                 println!("debug: stack overflowed, {} > {}", p_end, stack_end);
                 return None;
@@ -530,9 +531,9 @@ mod tests {
         DATA.with_borrow_mut(|data| {
             let hdr = data[obj_addr - WORD_SIZE];
             let pointer_cnt: WordSize = read_pointer_cnt(hdr);
-            let data_size_32: WordSize = read_data_size(hdr);
+            let size_32: WordSize = read_data_size(hdr);
             let mut i = obj_addr;
-            let end = obj_addr + pointer_cnt.bytes() + data_size_32.bytes();
+            let end = obj_addr + size_32.bytes();
             while i < end {
                 data[i] = 0;
                 i = i + WORD_SIZE;

@@ -18,6 +18,7 @@ struct StackHeader {
     data_kind: DataKind,
     pointer_cnt: WordSize,
     data_size_32: WordSize,
+    //TODO @mark: might be more efficient to store pointer cnt and total size; fewer additions - however it also limits total fields to 256 instead of just pointers or just data
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -580,7 +581,7 @@ mod tests {
     fn fast_gc_cleans_young_if_unreferenced() {
         reset();
         let cap = GC_CONF.with_borrow(|conf| conf.young_side_capacity);
-        fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
+        let orig = fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
         stack_frame_push();
         fill_zeros(alloc_stack(ONE_WORD, TWO_WORDS));
         stack_frame_push();
@@ -595,5 +596,8 @@ mod tests {
         assert_eq!(stats.initial_young_len, WordSize(8));
         assert_eq!(stats.final_young_capacity, cap);
         assert_eq!(stats.final_young_len, NO_WORDS);
+        let swap = fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
+        let self1 = WordSize(100);
+        assert!(swap - orig > ByteSize(500), "young sides do not look swapped");
     }
 }

@@ -439,11 +439,10 @@ pub fn collect_fast() -> FastCollectStats {
                 let mut frame_after = state.stack_top_data;
                 println!("debug: start backwards walk frame {}", frame_start);
                 loop {
-                    let mut data_ix = frame_start;
-                    println!("debug:   start data forward in frame {}", data_ix);
+                    let mut data_ix = frame_start + WORD_SIZE;
                     while data_ix < frame_after {
-                        data_ix = data_ix + WORD_SIZE;
                         println!("debug:   data forward in frame {}", data_ix);
+                        data_ix = data_ix + WORD_SIZE;
                     }
                     if frame_start == Pointer::null() {
                         break

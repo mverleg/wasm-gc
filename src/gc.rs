@@ -563,6 +563,17 @@ mod tests {
     }
 
     #[test]
+    fn alloc_stack_out_of_space() {
+        reset();
+        for _ in 0 .. 4 {
+            let addr1 = alloc0_stack(WordSize(0), WordSize(255));
+            assert!(addr1.is_some());
+        }
+        let addr2 = alloc0_stack(WordSize(0), WordSize(255));
+        assert!(addr2.is_none());
+    }
+
+    #[test]
     fn alloc_data_on_heap() {
         reset();
         let orig = alloc_heap(ONE_WORD, THREE_WORDS, false);

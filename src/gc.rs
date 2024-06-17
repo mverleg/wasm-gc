@@ -471,6 +471,7 @@ mod tests {
     const NO_WORDS: WordSize = WordSize(0);
     const ONE_WORD: WordSize = WordSize(1);
     const TWO_WORDS: WordSize = WordSize(2);
+    const THREE_WORDS: WordSize = WordSize(3);
 
     fn reset() {
         GC_CONF.with_borrow_mut(|conf| *conf = GcConf {
@@ -553,8 +554,8 @@ mod tests {
     #[test]
     fn alloc_data_on_heap() {
         reset();
-        let orig = alloc_heap(ONE_WORD, TWO_WORDS, false);
-        let subsequent = alloc_heap(TWO_WORDS, ONE_WORD, false);
+        let orig = alloc_heap(ONE_WORD, THREE_WORDS, false);
+        let subsequent = alloc_heap(TWO_WORDS, THREE_WORDS, false);
         DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
         assert_eq!(subsequent - orig, ByteSize(16));
         assert_eq!(young_heap_size(), WordSize(8));
@@ -565,9 +566,9 @@ mod tests {
     fn alloc_data_on_stack() {
         reset();
         stack_frame_push();
-        let orig = alloc_stack(ONE_WORD, TWO_WORDS);
+        let orig = alloc_stack(ONE_WORD, THREE_WORDS);
         stack_frame_push();
-        let subsequent = alloc_stack(TWO_WORDS, ONE_WORD);
+        let subsequent = alloc_stack(TWO_WORDS, THREE_WORDS);
         DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
         assert_eq!(subsequent - orig, WORD_SIZE * 5);
         assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));
@@ -582,12 +583,12 @@ mod tests {
     fn fast_gc_cleans_young_if_unreferenced() {
         reset();
         let cap = GC_CONF.with_borrow(|conf| conf.young_side_capacity);
-        let orig = fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
+        let orig = fill_zeros(alloc_heap(ONE_WORD, THREE_WORDS, false));
         stack_frame_push();
-        fill_zeros(alloc_stack(ONE_WORD, TWO_WORDS));
+        fill_zeros(alloc_stack(ONE_WORD, THREE_WORDS));
         stack_frame_push();
-        fill_zeros(alloc_stack(TWO_WORDS, ONE_WORD));
-        fill_zeros(alloc_heap(TWO_WORDS, ONE_WORD, true));
+        fill_zeros(alloc_stack(TWO_WORDS, THREE_WORDS));
+        fill_zeros(alloc_heap(TWO_WORDS, THREE_WORDS, true));
         assert_eq!(young_heap_size(), WordSize(8));
         assert_eq!(stack_size(), WordSize(10));
         let stats = collect_fast();
@@ -597,7 +598,7 @@ mod tests {
         assert_eq!(stats.initial_young_len, WordSize(8));
         assert_eq!(stats.final_young_capacity, cap);
         assert_eq!(stats.final_young_len, NO_WORDS);
-        let swap = fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
+        let swap = fill_zeros(alloc_heap(ONE_WORD, THREE_WORDS, false));
         let self1 = WordSize(100);
         assert!(swap - orig > ByteSize(500), "young sides do not look swapped");
     }

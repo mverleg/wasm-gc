@@ -41,6 +41,12 @@ impl HeaderEnc {
         ]))
     }
 
+    fn decode_struct(self, data: Nr) -> (u8, WordSize, WordSize) {
+        let [typ, flags, pointer_cnt_u8, size_32_u8] = data.to_le_bytes();
+        debug_assert!(typ == STRUCT_BYTE);
+        (flags, WordSize(pointer_cnt_u8.into()), WordSize(size_32_u8.into()))
+    }
+
     fn len(self) -> ByteSize {
         match self {
             HeaderEnc::Small(_) => WORD_SIZE,
@@ -79,6 +85,15 @@ impl StackHeader {
     fn encode(self) -> HeaderEnc {
         let flags: u8 = 0;
         HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32)
+    }
+
+    fn decode(data: Nr) -> Self {
+        let (flags, pointer_cnt, size_32) = HeaderEnc::Small(data).decode_struct(data);
+        StackHeader {
+            data_kind: DataKind::Struct,
+            pointer_cnt,
+            size_32,
+        }
     }
 }
 
@@ -455,10 +470,12 @@ pub fn collect_fast() -> FastCollectStats {
                 let mut frame_start = state.stack_top_frame;
                 let mut frame_after = state.stack_top_data;
                 loop {
-                    let mut data_ix = frame_start + WORD_SIZE;
-                    while data_ix < frame_after {
-                        mark_reachable(&mut data[data_ix]);
-                        data_ix = data_ix + WORD_SIZE;
+                    let mut header_ix = frame_start + WORD_SIZE;
+                    while header_ix < frame_after {
+                        let header = StackHeader::decode(data[header_ix]);
+                        // mark_reachable(&mut data[data_ix]);
+                        //TODO @mark: not needed for stack ^
+                        header_ix = header_ix + header.size_32.bytes();
                     }
                     if frame_start == Pointer::null() {
                         break

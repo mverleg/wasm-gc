@@ -287,6 +287,14 @@ impl Add<ByteSize> for Pointer {
     }
 }
 
+impl Add<ByteSize> for ByteSize {
+    type Output = ByteSize;
+
+    fn add(self, rhs: ByteSize) -> Self::Output {
+        ByteSize(self.0 + rhs.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Side { Left, Right }
 
@@ -461,28 +469,42 @@ pub struct FastCollectStats {
     //TODO @mark: use ^
 }
 
+pub struct TaskStack {
+    start: Pointer,
+    top: Pointer,
+}
+
 pub fn collect_fast() -> FastCollectStats {
     GC_CONF.with_borrow(|conf| {
         GC_STATE.with_borrow_mut(|state| {
             DATA.with_borrow_mut(|data| {
-                // walk the stack backwards for roots
+                // use the opposite young side as a stack of references to visit
+                // for young heap this is guaranteed to fit, because task = 1 byte and header >= 1 byte
+                let mut walk_stack_start = conf.young_side_start(state.young_side.opposite());
+                let mut walk_stack_top = walk_stack_start;
 
+                // walk the stack backwards for roots
                 let mut frame_start = state.stack_top_frame;
                 let mut frame_after = state.stack_top_data;
-                println!("debug: frame_start {frame_start}");
                 while frame_start != Pointer::null() {
                     let mut header_ix = frame_start + WORD_SIZE;
                     while header_ix < frame_after {
-                        println!("debug: stack header {} at {header_ix}", data[header_ix]);
+                        //TODO @mark: check that is not a stack or old heap reference
                         let header = StackHeader::decode(data[header_ix]);
-                        // mark_reachable(&mut data[data_ix]);
-                        //TODO @mark: not needed for stack ^
-                        println!("debug: stack header {} -> {:?}", data[header_ix], header);
+                        let mut pointer_ix = header_ix + WORD_SIZE;
+                        let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
+                        while pointer_ix < header_ix + pointer_end {
+                            pointer_ix = pointer_ix + WORD_SIZE;
+                            println!("found heap pointer {pointer_ix}");
+                            //TODO @mark: push to stack
+                        }
                         header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
                     }
                     frame_after = frame_start;
                     frame_start = Pointer(data[frame_start]);
                 }
+
+                // mark_reachable(&mut data[data_ix]);
 
                 // let prev_frame = data[state.stack_top_frame];
                 // if stack_frame == Pointer::null() {

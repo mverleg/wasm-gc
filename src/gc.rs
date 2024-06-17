@@ -10,10 +10,12 @@ use ::std::ops::IndexMut;
 use ::std::ops::Mul;
 use ::std::ops::Sub;
 
-type AddrNr = i32;
+type Nr = i32;
 
 const WORD_SIZE: ByteSize = ByteSize(4);
 const STRUCT_BYTE: u8 = 1;
+const GC_REACHABLE_FLAG_BIT: u8 = 0;
+const POINTER_MUTABLE_FLAG_BIT: u8 = 1;
 
 #[derive(Debug)]
 struct StackHeader {
@@ -24,7 +26,7 @@ struct StackHeader {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum HeaderEnc { Small(AddrNr), Big(AddrNr, AddrNr) }
+enum HeaderEnc { Small(Nr), Big(Nr, Nr) }
 
 impl HeaderEnc {
     fn of_struct(flags: u8, pointer_cnt: WordSize, size_32: WordSize) -> Self {
@@ -59,6 +61,20 @@ impl HeaderEnc {
     }
 }
 
+fn mark_reachable(header: &mut Nr) {
+    //TODO @mark: could probably mutate i32 directly
+    let [typ, mut flags, other1, other2] = header.to_le_bytes();
+    debug_assert!(typ == STRUCT_BYTE);
+    flags |= mask(true, GC_REACHABLE_FLAG_BIT);
+    *header = Nr::from_le_bytes([
+        STRUCT_BYTE,
+        flags,
+        other1,
+        other2,
+    ])
+
+}
+
 impl StackHeader {
     fn encode(self) -> HeaderEnc {
         let flags: u8 = 0;
@@ -80,7 +96,7 @@ struct YoungHeapHeader {
     size_32: WordSize,
 }
 
-fn mask(is_on: bool, ix: u8) -> u8 {
+const fn mask(is_on: bool, ix: u8) -> u8 {
     assert!(ix < 8);
     if !is_on {
         return 0;
@@ -92,7 +108,8 @@ fn mask(is_on: bool, ix: u8) -> u8 {
 impl YoungHeapHeader {
     fn encode(self) -> HeaderEnc {
         assert!(self.pointer_cnt.0 > 0 || !self.pointers_mutable);
-        let flags: u8 = mask(self.gc_reachable, 0) & mask(self.pointers_mutable, 1);
+        let flags: u8 = mask(self.gc_reachable, GC_REACHABLE_FLAG_BIT) &
+            mask(self.pointers_mutable, POINTER_MUTABLE_FLAG_BIT);
         HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32)
     }
 }
@@ -106,7 +123,7 @@ impl OldHeapHeader {
     }
 }
 
-const OFFSET: Pointer = Pointer((size_of::<GcConf>() + size_of::<GcState>()) as AddrNr + WORD_SIZE.0);
+const OFFSET: Pointer = Pointer((size_of::<GcConf>() + size_of::<GcState>()) as Nr + WORD_SIZE.0);
 
 #[derive(Debug)]
 struct GcConf {
@@ -176,7 +193,7 @@ impl GcState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct ByteSize(AddrNr);
+pub struct ByteSize(Nr);
 
 impl ByteSize {
     fn whole_words(self) -> WordSize {
@@ -186,7 +203,7 @@ impl ByteSize {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct WordSize(AddrNr);
+pub struct WordSize(Nr);
 
 impl WordSize {
     fn bytes(self) -> ByteSize {
@@ -201,10 +218,10 @@ impl fmt::Display for WordSize {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct Pointer(AddrNr);
+pub struct Pointer(Nr);
 
 impl Pointer {
-    fn as_data(self) -> AddrNr {
+    fn as_data(self) -> Nr {
         self.0
     }
 
@@ -239,10 +256,10 @@ impl Sub<ByteSize> for Pointer {
     }
 }
 
-impl Mul<AddrNr> for ByteSize {
+impl Mul<Nr> for ByteSize {
     type Output = ByteSize;
 
-    fn mul(self, rhs: AddrNr) -> Self::Output {
+    fn mul(self, rhs: Nr) -> Self::Output {
         ByteSize(self.0 * rhs)
     }
 }
@@ -268,7 +285,7 @@ impl Side {
 }
 
 struct Data {
-    mem: Vec<AddrNr>,
+    mem: Vec<Nr>,
 }
 
 impl Data {
@@ -278,7 +295,7 @@ impl Data {
 }
 
 impl Index<Pointer> for Data {
-    type Output = AddrNr;
+    type Output = Nr;
 
     fn index(&self, index: Pointer) -> &Self::Output {
         debug_assert!(index != Pointer::null(), "cannot read from null pointer");
@@ -437,11 +454,10 @@ pub fn collect_fast() -> FastCollectStats {
 
                 let mut frame_start = state.stack_top_frame;
                 let mut frame_after = state.stack_top_data;
-                println!("debug: start backwards walk frame {}", frame_start);
                 loop {
                     let mut data_ix = frame_start + WORD_SIZE;
                     while data_ix < frame_after {
-                        println!("debug:   data forward in frame {}", data_ix);
+                        mark_reachable(&mut data[data_ix]);
                         data_ix = data_ix + WORD_SIZE;
                     }
                     if frame_start == Pointer::null() {
@@ -449,7 +465,6 @@ pub fn collect_fast() -> FastCollectStats {
                     }
                     frame_after = frame_start;
                     frame_start = Pointer(data[frame_start]);
-                    println!("debug: backwards walk frame {}", frame_start);
                 }
 
                 // let prev_frame = data[state.stack_top_frame];
@@ -581,12 +596,12 @@ mod tests {
         obj_addr
     }
 
-    fn read_pointer_cnt(header: AddrNr) -> WordSize {
-        WordSize(header.to_le_bytes()[2] as AddrNr)
+    fn read_pointer_cnt(header: Nr) -> WordSize {
+        WordSize(header.to_le_bytes()[2] as Nr)
     }
 
-    fn read_data_size(header: AddrNr) -> WordSize {
-        WordSize(header.to_le_bytes()[3] as AddrNr)
+    fn read_data_size(header: Nr) -> WordSize {
+        WordSize(header.to_le_bytes()[3] as Nr)
     }
 
     #[test]

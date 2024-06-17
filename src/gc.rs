@@ -27,7 +27,7 @@ enum HeaderEnc { Small(AddrNr), Big(AddrNr, AddrNr) }
 impl HeaderEnc {
     fn of_struct(flags: u8, pointer_cnt: WordSize, size_32: WordSize) -> Self {
         debug_assert!(pointer_cnt <= size_32, "pointer size cannot exceed total size");
-        let size_32_u8: u8 = size_32.0.try_into().expect("struct too large");
+        let size_32_u8: u8 = size_32.0.try_into().unwrap_or_else(|_| panic!("struct too large: {size_32}"));
         let pointer_cnt_u8: u8 = pointer_cnt.0.try_into().expect("should never be reached since pointer <= total");
         HeaderEnc::Small(i32::from_le_bytes([
             STRUCT_BYTE,
@@ -549,6 +549,17 @@ mod tests {
 
     fn read_data_size(header: AddrNr) -> WordSize {
         WordSize(header.to_le_bytes()[3] as AddrNr)
+    }
+
+    #[test]
+    fn alloc_heap_out_of_space() {
+        reset();
+        for _ in 0 .. 64 {
+            let addr1 = alloc0_heap(WordSize(0), WordSize(255), false);
+            assert!(addr1.is_some());
+        }
+        let addr2 = alloc0_heap(WordSize(0), WordSize(255), false);
+        assert!(addr2.is_none());
     }
 
     #[test]

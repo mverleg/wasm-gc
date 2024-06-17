@@ -556,7 +556,7 @@ mod tests {
         reset();
         let orig = alloc_heap(ONE_WORD, THREE_WORDS, false);
         let subsequent = alloc_heap(TWO_WORDS, THREE_WORDS, false);
-        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
+        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x03010001));
         assert_eq!(subsequent - orig, ByteSize(16));
         assert_eq!(young_heap_size(), WordSize(8));
         assert_eq!(stack_size(), NO_WORDS);
@@ -569,7 +569,7 @@ mod tests {
         let orig = alloc_stack(ONE_WORD, THREE_WORDS);
         stack_frame_push();
         let subsequent = alloc_stack(TWO_WORDS, THREE_WORDS);
-        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x02010001));
+        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x03010001));
         assert_eq!(subsequent - orig, WORD_SIZE * 5);
         assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));
         stack_frame_pop();

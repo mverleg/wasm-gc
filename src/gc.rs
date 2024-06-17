@@ -1,3 +1,5 @@
+#![allow(unused)]  //TODO @mark:
+
 use ::std::cell::RefCell;
 use ::std::fmt;
 use ::std::fmt::Formatter;
@@ -430,16 +432,53 @@ pub struct FastCollectStats {
 pub fn collect_fast() -> FastCollectStats {
     GC_CONF.with_borrow(|conf| {
         GC_STATE.with_borrow_mut(|state| {
-            //TODO @mark: just clean everything for now
-            let init_size = state.young_top - conf.young_side_start(state.young_side);
-            state.young_side = state.young_side.opposite();
-            state.young_top = conf.young_side_start(state.young_side);
-            FastCollectStats {
-                initial_young_capacity: conf.young_side_capacity,
-                initial_young_len: init_size.whole_words(),
-                final_young_capacity: conf.young_side_capacity,
-                final_young_len: WordSize(0),
-            }
+            DATA.with_borrow_mut(|data| {
+                // walk the stack backwards for roots
+
+                let mut frame_start = state.stack_top_frame;
+                let mut frame_after = state.stack_top_data;
+                println!("debug: start backwards walk frame {}", frame_start);
+                loop {
+                    let mut data_ix = frame_start;
+                    println!("debug:   start data forward in frame {}", data_ix);
+                    while data_ix < frame_after {
+                        data_ix = data_ix + WORD_SIZE;
+                        println!("debug:   data forward in frame {}", data_ix);
+                    }
+                    if frame_start == Pointer::null() {
+                        break
+                    }
+                    frame_after = frame_start;
+                    frame_start = Pointer(data[frame_start]);
+                    println!("debug: backwards walk frame {}", frame_start);
+                }
+
+                // let prev_frame = data[state.stack_top_frame];
+                // if stack_frame == Pointer::null() {
+                //     // reach start of stack (backwards)
+                //     break
+                // }
+                // state.stack_top_data = state.stack_top_frame;
+                // state.stack_top_frame = Pointer(prev_frame);
+                //
+                //
+                // let mut ws = conf.stack_start().aligned_down();
+                // while ws < state.stack_top_data {
+                //     ws = ws + WORD_SIZE;
+                //     data[ws]
+                // }
+
+                //TODO @mark: just clean everything for now
+                let init_size = state.young_top - conf.young_side_start(state.young_side);
+                state.young_side = state.young_side.opposite();
+                state.young_top = conf.young_side_start(state.young_side);
+                FastCollectStats {
+                    initial_young_capacity: conf.young_side_capacity,
+                    initial_young_len: init_size.whole_words(),
+                    final_young_capacity: conf.young_side_capacity,
+                    final_young_len: WordSize(0),
+                }
+            })
         })
     })
 }

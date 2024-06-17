@@ -469,16 +469,16 @@ pub fn collect_fast() -> FastCollectStats {
 
                 let mut frame_start = state.stack_top_frame;
                 let mut frame_after = state.stack_top_data;
-                loop {
+                println!("debug: frame_start {frame_start}");
+                while frame_start != Pointer::null() {
                     let mut header_ix = frame_start + WORD_SIZE;
                     while header_ix < frame_after {
+                        println!("debug: stack header {} at {header_ix}", data[header_ix]);
                         let header = StackHeader::decode(data[header_ix]);
                         // mark_reachable(&mut data[data_ix]);
                         //TODO @mark: not needed for stack ^
-                        header_ix = header_ix + header.size_32.bytes();
-                    }
-                    if frame_start == Pointer::null() {
-                        break
+                        println!("debug: stack header {} -> {:?}", data[header_ix], header);
+                        header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
                     }
                     frame_after = frame_start;
                     frame_start = Pointer(data[frame_start]);
@@ -678,14 +678,16 @@ mod tests {
         let orig = fill_zeros(alloc_heap(ONE_WORD, THREE_WORDS, false));
         stack_frame_push();
         fill_zeros(alloc_stack(ONE_WORD, THREE_WORDS));
+        fill_zeros(alloc_stack(NO_WORDS, ONE_WORD));
         stack_frame_push();
         fill_zeros(alloc_stack(TWO_WORDS, THREE_WORDS));
         fill_zeros(alloc_heap(TWO_WORDS, THREE_WORDS, true));
         assert_eq!(young_heap_size(), WordSize(8));
-        assert_eq!(stack_size(), WordSize(10));
+        assert_eq!(stack_size(), WordSize(12));
+        print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
         let stats = collect_fast();
         assert_eq!(young_heap_size(), NO_WORDS);
-        assert_eq!(stack_size(), WordSize(10));
+        assert_eq!(stack_size(), WordSize(12));
         assert_eq!(stats.initial_young_capacity, cap);
         assert_eq!(stats.initial_young_len, WordSize(8));
         assert_eq!(stats.final_young_capacity, cap);

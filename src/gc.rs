@@ -9,6 +9,7 @@ use ::std::ops::Index;
 use ::std::ops::IndexMut;
 use ::std::ops::Mul;
 use ::std::ops::Sub;
+use std::io::SeekFrom::Start;
 
 type Nr = i32;
 
@@ -469,9 +470,30 @@ pub struct FastCollectStats {
     //TODO @mark: use ^
 }
 
-pub struct TaskStack {
+struct TaskStack {
     start: Pointer,
     top: Pointer,
+}
+
+impl TaskStack {
+    fn new_empty_at(start: Pointer) -> Self {
+        TaskStack { start, top: start }
+    }
+
+    /// push all pointers in one object before popping anything; this probably leads to higher
+    /// stack size than DFS, but it means we only need to store header pointers, not field ones.
+    fn push_all(young_only: bool) {
+        todo!()
+    }
+
+    //TODO @mark: if mutable objects stay young forever, that means young heap can have objects older than old heap, which in turn means old heap can have references to young heap and we need to scan everything all the time
+    fn push(young_only: bool) {
+        todo!()
+    }
+
+    fn pop() {
+        todo!()
+    }
 }
 
 pub fn collect_fast() -> FastCollectStats {
@@ -480,8 +502,7 @@ pub fn collect_fast() -> FastCollectStats {
             DATA.with_borrow_mut(|data| {
                 // use the opposite young side as a stack of references to visit
                 // for young heap this is guaranteed to fit, because task = 1 byte and header >= 1 byte
-                let mut walk_stack_start = conf.young_side_start(state.young_side.opposite());
-                let mut walk_stack_top = walk_stack_start;
+                let mut tasks = TaskStack::new_empty_at(conf.young_side_start(state.young_side.opposite()));
 
                 // walk the stack backwards for roots
                 let mut frame_start = state.stack_top_frame;

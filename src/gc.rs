@@ -18,6 +18,11 @@ const STRUCT_BYTE: u8 = 1;
 const GC_REACHABLE_FLAG_BIT: u8 = 0;
 const POINTER_MUTABLE_FLAG_BIT: u8 = 1;
 
+//TODO @mark:
+// - how to deal with old heap references to mutable data?
+// - what if during a small collection, old heap gets filled and needs collecting?
+// - what if task stack for old heap exceeds available space?
+
 #[derive(Debug)]
 struct StackHeader {
     data_kind: DataKind,
@@ -738,5 +743,35 @@ mod tests {
         let swap = fill_zeros(alloc_heap(ONE_WORD, THREE_WORDS, false));
         let self1 = WordSize(100);
         assert!(swap - orig > ByteSize(500), "young sides do not look swapped");
+    }
+
+    #[test]
+    fn fast_gc_mutable_data_ref_from_old_heap() {
+        reset();
+
+        // allocate mutable data, and immutable heap data referencing it
+        stack_frame_push();
+        let heap_mut = fill_zeros(alloc_heap(ONE_WORD, ONE_WORD, true));
+        let heap_immut = fill_zeros(alloc_heap(ONE_WORD, ONE_WORD, false));
+        let stack_ref = fill_zeros(alloc_stack(ONE_WORD, ONE_WORD));
+        DATA.with_borrow_mut(|data| {
+            data[stack_ref] = heap_immut.0;
+            data[heap_immut] = heap_mut.0;
+        });
+
+        // do a few GC rounds to move immutable data to old heap
+        for _ in 0 .. 20 {
+            collect_fast();
+        }
+        DATA.with_borrow_mut(|data| {
+            assert_ne!(heap_immut.0, data[stack_ref], "immutable not moved from young to old");
+            let mut_addr = Pointer(data[stack_ref]);
+            assert_eq!(heap_mut.0, data[mut_addr], "mutable data moved, it should stay young");
+        });
+
+        // The problem to test for is this: if collect_fast does not scan old heap,
+        // then it does not see the pointer to heap_mut, and that gets collected.
+        assert_ne!(young_heap_size(), NO_WORDS, "mutable data got collected but was reachable");
+        assert_eq!(young_heap_size(), TWO_WORDS, "young size incorrect");
     }
 }

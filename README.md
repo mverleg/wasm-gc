@@ -26,6 +26,11 @@ The old regions are slower to collect. We must first mark every object starting 
 - We create a break table for live memory, preserving memory order. We can use the break table to do compacting moves without touching dead memory, and re-scan from roots to update all pointers using the break table. Break table needs memory, and takes O(n log n) to sort.
 - We scan the old heap (including dead memory) to put new addresses in object headers. We re-scan from roots to update all pointers, then we re-scan the old heap (including dead memory) to perform the compacting moves. We need 1 word overhead per object, no sorting needed, but needs to scan full heap twice (instead of live heap once).
 
+The meta region can share space with the old region, triggering GC when they grow towards eachother. The meta size to guarantee it won't run out of memory must include:
+- A stack or queue or similar to track work in the root scanning. If we do DFS the max size is the object graph depth, which may be as high as the number of objects (dead or alive) in all heap regions. This happens for one huge singly-linked-list, which we cannot rule out, but it's very unlikely.
+- The break table for the old heap, if applicable. This is as large as the number of objects (dead or alive) in the current old heap region. We're likely to reach a substantial fraction of this in practise.
+- A few words for 'state', such as current region boundaries, since they can be resized.
+
 Since the young region is compacted, memory locality is good, and allocations are very fast unless OOM (simple bump). Since old regions are also compacted, they also have good locality, no fragmentation, and moving young data to old is fast.
 
 ## Build locally

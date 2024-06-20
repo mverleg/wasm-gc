@@ -746,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn fast_gc_mutable_data_ref_from_old_heap() {
+    fn fast_gc_mutable_data_ref_from_old() {
         reset();
 
         // allocate mutable data, and immutable heap data referencing it
@@ -776,7 +776,13 @@ mod tests {
     }
 
     #[test]
+    fn fast_gc_young_data_ref_from_old_mutable() {
+        todo!()  //TODO @mark:
+    }
+
+    #[ignore]
+    #[test]
     fn maximum_heap_depth_gc() {
-        //TODO @mark: test case where the whole heap is a single linked list, for maximum scan depth
+        todo!("test case where te whole heap is a single linked list, for maximum scan depth")  //TODO @mark:
     }
 }

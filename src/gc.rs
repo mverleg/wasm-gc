@@ -18,10 +18,10 @@ const STRUCT_BYTE: u8 = 1;
 const GC_REACHABLE_FLAG_BIT: u8 = 0;
 const POINTER_MUTABLE_FLAG_BIT: u8 = 1;
 
-//TODO @mark:
-// - how to deal with old heap references to mutable data?
-// - what if during a small collection, old heap gets filled and needs collecting?
-// - what if task stack for old heap exceeds available space?
+// TODO how to handle 0-byte allocations? is there reference equality anywhere?
+// TODO have some post-GC handler?
+// TODO we need to read headers from end (following roots) and from start (compacting old heap), but they are variable length, so must be able to know the length from first and from last byte
+//   TODO ^ would it be easier to just return pointer to second word, and e.g. put array length there?
 
 #[derive(Debug)]
 struct StackHeader {
@@ -773,5 +773,10 @@ mod tests {
         // then it does not see the pointer to heap_mut, and that gets collected.
         assert_ne!(young_heap_size(), NO_WORDS, "mutable data got collected but was reachable");
         assert_eq!(young_heap_size(), TWO_WORDS, "young size incorrect");
+    }
+
+    #[test]
+    fn maximum_heap_depth_gc() {
+        //TODO @mark: test case where the whole heap is a single linked list, for maximum scan depth
     }
 }

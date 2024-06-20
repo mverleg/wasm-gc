@@ -33,6 +33,12 @@ The meta region can share space with the old region, triggering GC when they gro
 
 Since the young region is compacted, memory locality is good, and allocations are very fast unless OOM (simple bump). Since old regions are also compacted, they also have good locality, no fragmentation, and moving young data to old is fast.
 
+## Questions
+
+- What if an old region runs out of space during small GC? Or big?
+- How can regions be resized? Both bigger and smaller
+- Should roots be scanned depth-first or breadth-first, or something else? Depth is probably shallower. Scanning whole objects at a time means only storing 1 return pointer, without offset.
+
 ## Build locally
 
 To convert text to binary (uses [wabt](https://github.com/webassembly/wabt)):

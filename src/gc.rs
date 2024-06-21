@@ -1,19 +1,18 @@
 #![allow(unused)]  //TODO @mark:
 
-use ::std::cell::RefCell;
 use ::std::fmt;
 use ::std::fmt::Formatter;
-use ::std::mem::size_of;
 use ::std::ops::Add;
 use ::std::ops::Index;
 use ::std::ops::IndexMut;
 use ::std::ops::Mul;
 use ::std::ops::Sub;
-use std::io::SeekFrom::Start;
 
-type Nr = i32;
+use wasmer::wasmparser::Data;
 
-const WORD_SIZE: ByteSize = ByteSize(4);
+use crate::gc_state::{DATA, GC_CONF, GC_STATE, Nr};
+use crate::gc_state::WORD_SIZE;
+
 const STRUCT_BYTE: u8 = 1;
 const GC_REACHABLE_FLAG_BIT: u8 = 0;
 const POINTER_MUTABLE_FLAG_BIT: u8 = 1;
@@ -144,80 +143,11 @@ impl OldHeapHeader {
     }
 }
 
-const OFFSET: Pointer = Pointer((size_of::<GcConf>() + size_of::<GcState>()) as Nr + WORD_SIZE.0);
-
-#[derive(Debug)]
-struct GcConf {
-    stack_capacity: WordSize,
-    young_side_capacity: WordSize,
-    old_capacity: WordSize,
-}
-
-impl GcConf {
-    fn stack_start(&self) -> Pointer {
-        OFFSET
-    }
-
-    fn stack_end(&self) -> Pointer {
-        self.stack_start() + self.stack_capacity.bytes()
-    }
-
-    fn young_overall_start(&self) -> Pointer {
-        self.stack_start() + self.stack_capacity.bytes()
-    }
-
-    fn young_side_start(&self, side: Side) -> Pointer {
-        match side {
-            Side::Left => self.young_overall_start(),
-            Side::Right => self.young_overall_start() + self.young_side_capacity.bytes(),
-        }
-    }
-
-    fn young_side_end(&self, side: Side) -> Pointer {
-        self.young_side_start(side) + self.young_side_capacity.bytes()
-    }
-
-    fn old_start(&self) -> Pointer {
-        self.young_overall_start() + self.young_side_capacity.bytes() * 2
-    }
-
-    fn old_end(&self) -> Pointer {
-        self.old_start() + self.old_capacity.bytes()
-    }
-
-    fn end_of_memory(&self) -> Pointer {
-        self.old_end()
-    }
-}
-
-#[derive(Debug)]
-struct GcState {
-    stack_top_frame: Pointer,
-    stack_top_data: Pointer,
-    young_side: Side,
-    young_top: Pointer,
-    old_top: Pointer,
-}
-
-impl GcState {
-    fn stack_len(&self, conf: &GcConf) -> WordSize {
-        (self.stack_top_data - conf.stack_start()).whole_words()
-    }
-
-    fn young_len(&self, conf: &GcConf) -> WordSize {
-        (self.young_top - conf.young_side_start(self.young_side)).whole_words()
-    }
-
-    fn old_len(&self) -> WordSize {
-        unimplemented!()
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct ByteSize(Nr);
+pub struct ByteSize(pub Nr);
 
 impl ByteSize {
-    fn whole_words(self) -> WordSize {
+    pub(crate) fn whole_words(self) -> WordSize {
         debug_assert!(self.0 % 4 == 0);
         WordSize(self.0 / 4)
     }
@@ -227,7 +157,7 @@ impl ByteSize {
 pub struct WordSize(Nr);
 
 impl WordSize {
-    fn bytes(self) -> ByteSize {
+    pub fn bytes(self) -> ByteSize {
         ByteSize(WORD_SIZE.0 * self.0)
     }
 }
@@ -239,14 +169,14 @@ impl fmt::Display for WordSize {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub struct Pointer(Nr);
+pub struct Pointer(pub Nr);
 
 impl Pointer {
     fn as_data(self) -> Nr {
         self.0
     }
 
-    fn null() -> Self {
+    pub fn null() -> Self {
         return Pointer(0);
     }
 
@@ -299,68 +229,6 @@ impl Add<ByteSize> for ByteSize {
     fn add(self, rhs: ByteSize) -> Self::Output {
         ByteSize(self.0 + rhs.0)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Side { Left, Right }
-
-impl Side {
-    pub fn opposite(self) -> Side {
-        match self {
-            Side::Left => Side::Right,
-            Side::Right => Side::Left,
-        }
-    }
-}
-
-struct Data {
-    mem: Vec<Nr>,
-}
-
-impl Data {
-    pub fn len(&self) -> WordSize {
-        WordSize((self.mem.len() / 4).try_into().unwrap())
-    }
-}
-
-impl Index<Pointer> for Data {
-    type Output = Nr;
-
-    fn index(&self, index: Pointer) -> &Self::Output {
-        debug_assert!(index != Pointer::null(), "cannot read from null pointer");
-        assert!(index.0 % WORD_SIZE.0 == 0, "unaligned read not impl yet (might not be needed even though wasm can do it)");
-        &self.mem[(index.0 / WORD_SIZE.0) as usize]
-    }
-}
-
-impl IndexMut<Pointer> for Data {
-    fn index_mut(&mut self, index: Pointer) -> &mut Self::Output {
-        debug_assert!(index != Pointer::null(), "cannot write to null pointer");
-        assert!(index.0 % WORD_SIZE.0 == 0, "unaligned read not impl yet (might not be needed even though wasm can do it)");
-        &mut self.mem[(index.0 / WORD_SIZE.0) as usize]
-    }
-}
-
-thread_local! {
-    static GC_CONF: RefCell<GcConf> =
-        RefCell::new(GcConf {
-            stack_capacity: WordSize(0),
-            young_side_capacity: WordSize(0),
-            old_capacity: WordSize(0),
-        })
-    ;
-    static GC_STATE: RefCell<GcState> = {
-        RefCell::new(GcState {
-            stack_top_frame: Pointer(0),
-            stack_top_data: Pointer(0),
-            young_side: Side::Left,
-            young_top: Pointer(0),
-            old_top: Pointer(0),
-        })
-    };
-    static DATA: RefCell<Data> = {
-        RefCell::new(Data { mem: Vec::new() })
-    };
 }
 
 pub fn alloc_heap(
@@ -584,6 +452,7 @@ pub fn stack_size() -> WordSize {
 
 #[cfg(test)]
 mod tests {
+    use crate::gc_state::GcConf;
     use super::*;
 
     const NO_WORDS: WordSize = WordSize(0);

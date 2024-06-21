@@ -111,7 +111,6 @@ enum DataKind { Struct, Array, Forward }
 #[derive(Debug)]
 struct YoungHeapHeader {
     data_kind: DataKind,
-    gc_reachable: bool,
     pointers_mutable: bool,
     pointer_cnt: WordSize,
     size_32: WordSize,
@@ -129,9 +128,20 @@ const fn mask(is_on: bool, ix: u8) -> u8 {
 impl YoungHeapHeader {
     fn encode(self) -> HeaderEnc {
         assert!(self.pointer_cnt.0 > 0 || !self.pointers_mutable);
-        let flags: u8 = mask(self.gc_reachable, GC_REACHABLE_FLAG_BIT) &
-            mask(self.pointers_mutable, POINTER_MUTABLE_FLAG_BIT);
+        // let flags: u8 = mask(self.gc_reachable, GC_REACHABLE_FLAG_BIT) &
+        //     mask(self.pointers_mutable, POINTER_MUTABLE_FLAG_BIT);
+        let flags: u8 = mask(self.pointers_mutable, POINTER_MUTABLE_FLAG_BIT);
         HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32)
+    }
+
+    fn decode(data: Nr) -> Self {
+        let (flags, pointer_cnt, size_32) = HeaderEnc::Small(data).decode_struct(data);
+        YoungHeapHeader {
+            data_kind: DataKind::Struct,
+            pointers_mutable: false,
+            pointer_cnt,
+            size_32,
+        }
     }
 }
 
@@ -384,7 +394,6 @@ pub fn alloc0_heap(
             let p_init = state.young_top;
             let header = YoungHeapHeader {
                 data_kind: DataKind::Struct,
-                gc_reachable: false,
                 pointers_mutable,
                 pointer_cnt,
                 size_32,
@@ -480,6 +489,7 @@ struct TaskStack {
     top: Pointer,
 }
 
+//TODO @mark: not yet needed for young-only
 impl TaskStack {
     fn new_empty_at(start: Pointer) -> Self {
         TaskStack { start, top: start }
@@ -501,33 +511,61 @@ impl TaskStack {
     }
 }
 
+fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, new_young_top: &mut Pointer) {
+    // Stop if stack or old heap
+    todo!();
+
+    // Stop if already moved
+    todo!();
+
+    // If old enough, move to old heap, and leave a pointer
+    // TODO: not yet supported
+
+    // Otherwise (if not old), move to other side of young heap, and leave a pointer
+    todo!();
+    // increase: new_young_top
+
+    // We do not handle pointers directly, instead we'll do so while walking the young heap
+}
+
 pub fn collect_fast() -> FastCollectStats {
     GC_CONF.with_borrow(|conf| {
         GC_STATE.with_borrow_mut(|state| {
             DATA.with_borrow_mut(|data| {
-                // use the opposite young side as a stack of references to visit
-                // for young heap this is guaranteed to fit, because task = 1 byte and header >= 1 byte
-                let mut tasks = TaskStack::new_empty_at(conf.young_side_start(state.young_side.opposite()));
+                let new_young_start =  conf.young_side_start(state.young_side.opposite());
+                let mut new_young_top = new_young_start;
 
-                // walk the stack backwards for roots
+                // First walk the stack for roots
                 let mut frame_start = state.stack_top_frame;
                 let mut frame_after = state.stack_top_data;
                 while frame_start != Pointer::null() {
                     let mut header_ix = frame_start + WORD_SIZE;
                     while header_ix < frame_after {
-                        //TODO @mark: check that is not a stack or old heap reference
                         let header = StackHeader::decode(data[header_ix]);
                         let mut pointer_ix = header_ix + WORD_SIZE;
                         let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
                         while pointer_ix < header_ix + pointer_end {
                             pointer_ix = pointer_ix + WORD_SIZE;
-                            println!("found heap pointer {pointer_ix}");
-                            //TODO @mark: push to stack
+                            collect_fast_handle_pointer(data, pointer_ix, &mut new_young_top);
                         }
                         header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
                     }
                     frame_after = frame_start;
                     frame_start = Pointer(data[frame_start]);
+                }
+
+                // Having found all stack roots, handle the young heap by scanning flip side
+                // Note that the young heap still grows (new_young_top)
+                let mut header_ix = new_young_start;
+                while header_ix < new_young_top {
+                    let header = YoungHeapHeader::decode(data[header_ix]);
+                    let mut pointer_ix = header_ix + WORD_SIZE;
+                    let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
+                    while pointer_ix < header_ix + pointer_end {
+                        pointer_ix = pointer_ix + WORD_SIZE;
+                        collect_fast_handle_pointer(data, pointer_ix, &mut new_young_top);
+                    }
+                    header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
                 }
 
                 // mark_reachable(&mut data[data_ix]);

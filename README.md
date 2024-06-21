@@ -20,7 +20,7 @@ Because everything that survives the young region stays for the same number of c
 
 The mutable old region is needed because it is different from both others. Because it is mutable, it can reference data newer than itself, so must be scanned every GC. But it must not stay in the young region forever, because then old region memory may be younger than young region and have pointers to it.
 
-Having two young sides adds 50% overhead, but makes it fast to clean: we can move data it to the other side in a compacted way as soon as it is encountered, replacing it by a pointer to update references as they are encountered. Dead memory is never touched. Objects preserve their memory order, so old objects are at the start (this provides little benefit).
+Having two young sides adds 50% overhead, but makes it fast to clean: we can move data it to the other side in a compacted way as soon as it is encountered, replacing it by a pointer to update references as they are encountered. Dead memory is never touched. Objects are in tree walking order, they don't preserve order.
 
 The old regions are slower to collect. We must first mark every object starting from the roots. Then we have two choices:
 - We create a break table for live memory, preserving memory order. We can use the break table to do compacting moves without touching dead memory, and re-scan from roots to update all pointers using the break table. Break table needs memory, and takes O(n log n) to sort.

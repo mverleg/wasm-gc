@@ -1,5 +1,9 @@
+mod gc;
+
 use ::std::env;
 use ::std::fs;
+
+use ::wat;
 
 use ::wasmer::Cranelift;
 use ::wasmer::Function as HostFunction;
@@ -10,10 +14,6 @@ use ::wasmer::Store;
 use ::wasmer::sys::EngineBuilder;
 use ::wasmer::sys::Features;
 use ::wasmer::Value;
-use ::wat;
-
-mod gc;
-mod gc_state;
 
 fn main() {
     run(env::args().skip(1).next())

@@ -534,6 +534,7 @@ pub fn collect_fast() -> FastCollectStats {
             DATA.with_borrow_mut(|data| {
                 let new_young_start =  conf.young_side_start(state.young_side.opposite());
                 let mut new_young_top = new_young_start;
+                let init_size = state.young_top - conf.young_side_start(state.young_side);
 
                 // First walk the stack for roots
                 let mut frame_start = state.stack_top_frame;
@@ -568,27 +569,8 @@ pub fn collect_fast() -> FastCollectStats {
                     header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
                 }
 
-                // mark_reachable(&mut data[data_ix]);
-
-                // let prev_frame = data[state.stack_top_frame];
-                // if stack_frame == Pointer::null() {
-                //     // reach start of stack (backwards)
-                //     break
-                // }
-                // state.stack_top_data = state.stack_top_frame;
-                // state.stack_top_frame = Pointer(prev_frame);
-                //
-                //
-                // let mut ws = conf.stack_start().aligned_down();
-                // while ws < state.stack_top_data {
-                //     ws = ws + WORD_SIZE;
-                //     data[ws]
-                // }
-
-                //TODO @mark: just clean everything for now
-                let init_size = state.young_top - conf.young_side_start(state.young_side);
                 state.young_side = state.young_side.opposite();
-                state.young_top = conf.young_side_start(state.young_side);
+                state.young_top = new_young_top;
                 FastCollectStats {
                     initial_young_capacity: conf.young_side_capacity,
                     initial_young_len: init_size.whole_words(),

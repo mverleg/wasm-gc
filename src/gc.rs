@@ -9,8 +9,8 @@ use ::std::ops::Index;
 use ::std::ops::IndexMut;
 use ::std::ops::Mul;
 use ::std::ops::Sub;
-use std::io::SeekFrom::Start;
-use std::ops::Range;
+use ::std::io::SeekFrom::Start;
+use ::std::ops::Range;
 
 type Nr = i32;
 
@@ -513,7 +513,7 @@ impl TaskStack {
 }
 
 fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_range: Range<Pointer>, new_young_top: &mut Pointer) {
-    // Stop if stack or old heap
+    // Stop if stack or old heap, or if already moved to opposite young heap side
     if !young_from_range.contains(&pointer_ix) {
         return;
     }

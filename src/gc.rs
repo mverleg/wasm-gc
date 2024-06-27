@@ -10,6 +10,7 @@ use ::std::ops::IndexMut;
 use ::std::ops::Mul;
 use ::std::ops::Sub;
 use std::io::SeekFrom::Start;
+use std::ops::Range;
 
 type Nr = i32;
 
@@ -511,9 +512,11 @@ impl TaskStack {
     }
 }
 
-fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, new_young_top: &mut Pointer) {
+fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_range: Range<Pointer>, new_young_top: &mut Pointer) {
     // Stop if stack or old heap
-    todo!();
+    if !young_from_range.contains(&pointer_ix) {
+        return;
+    }
 
     // Stop if already moved
     todo!();
@@ -532,6 +535,7 @@ pub fn collect_fast() -> FastCollectStats {
     GC_CONF.with_borrow(|conf| {
         GC_STATE.with_borrow_mut(|state| {
             DATA.with_borrow_mut(|data| {
+                let young_from_range = conf.young_side_start(state.young_side) .. conf.young_side_end(state.young_side);
                 let new_young_start =  conf.young_side_start(state.young_side.opposite());
                 let mut new_young_top = new_young_start;
                 let init_size = state.young_top - conf.young_side_start(state.young_side);
@@ -547,7 +551,7 @@ pub fn collect_fast() -> FastCollectStats {
                         let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
                         while pointer_ix < header_ix + pointer_end {
                             pointer_ix = pointer_ix + WORD_SIZE;
-                            collect_fast_handle_pointer(data, pointer_ix, &mut new_young_top);
+                            collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
                         }
                         header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
                     }
@@ -564,7 +568,7 @@ pub fn collect_fast() -> FastCollectStats {
                     let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
                     while pointer_ix < header_ix + pointer_end {
                         pointer_ix = pointer_ix + WORD_SIZE;
-                        collect_fast_handle_pointer(data, pointer_ix, &mut new_young_top);
+                        collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
                     }
                     header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
                 }

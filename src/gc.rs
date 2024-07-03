@@ -515,6 +515,7 @@ impl TaskStack {
 fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_range: Range<Pointer>, new_young_top: &mut Pointer) {
     // Stop if stack or old heap, or if already moved to opposite young heap side
     if !young_from_range.contains(&pointer_ix) {
+        println!("not young heap {}, stop (not in range {:?})", pointer_ix, young_from_range);
         return;
     }
 
@@ -538,18 +539,21 @@ pub fn collect_fast() -> FastCollectStats {
                 let young_from_range = conf.young_side_start(state.young_side) .. conf.young_side_end(state.young_side);
                 let new_young_start =  conf.young_side_start(state.young_side.opposite());
                 let mut new_young_top = new_young_start;
-                let init_size = state.young_top - conf.young_side_start(state.young_side);
+                let init_young_size = state.young_top - conf.young_side_start(state.young_side);
 
                 // First walk the stack for roots
                 let mut frame_start = state.stack_top_frame;
                 let mut frame_after = state.stack_top_data;
                 while frame_start != Pointer::null() {
+                    println!("stack frame {}", frame_start);  //TODO @mark:
                     let mut header_ix = frame_start + WORD_SIZE;
                     while header_ix < frame_after {
                         let header = StackHeader::decode(data[header_ix]);
+                        println!("stack object {}, header {:?}", header_ix, header);  //TODO @mark:
                         let mut pointer_ix = header_ix + WORD_SIZE;
                         let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
                         while pointer_ix < header_ix + pointer_end {
+                            println!("stack pointer {}", pointer_ix);  //TODO @mark:
                             pointer_ix = pointer_ix + WORD_SIZE;
                             collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
                         }
@@ -558,10 +562,12 @@ pub fn collect_fast() -> FastCollectStats {
                     frame_after = frame_start;
                     frame_start = Pointer(data[frame_start]);
                 }
+                println!("stack END {}", frame_start);  //TODO @mark:
 
                 // Having found all stack roots, handle the young heap by scanning flip side
                 // Note that the young heap still grows (new_young_top)
                 let mut header_ix = new_young_start;
+                println!("young {:?} {} -> {} ({:?})", state.young_side.opposite(), header_ix, new_young_top, new_young_top - header_ix);  //TODO @mark:
                 while header_ix < new_young_top {
                     let header = YoungHeapHeader::decode(data[header_ix]);
                     let mut pointer_ix = header_ix + WORD_SIZE;
@@ -577,7 +583,7 @@ pub fn collect_fast() -> FastCollectStats {
                 state.young_top = new_young_top;
                 FastCollectStats {
                     initial_young_capacity: conf.young_side_capacity,
-                    initial_young_len: init_size.whole_words(),
+                    initial_young_len: init_young_size.whole_words(),
                     final_young_capacity: conf.young_side_capacity,
                     final_young_len: WordSize(0),
                 }
@@ -741,6 +747,33 @@ mod tests {
         stack_frame_pop();
         assert_eq!(stack_size(), NO_WORDS);
         assert_eq!(young_heap_size(), NO_WORDS);
+    }
+
+    #[test]
+    fn fast_gc_simple_referenced_young_value() {
+        reset();
+        let cap = GC_CONF.with_borrow(|conf| conf.young_side_capacity);
+        // let orig = fill_zeros(alloc_heap(ONE_WORD, THREE_WORDS, false));
+        stack_frame_push();
+        stack_frame_push();
+        fill_zeros(alloc_stack(TWO_WORDS, THREE_WORDS));
+        let stack = fill_zeros(alloc_stack(TWO_WORDS, THREE_WORDS));
+        fill_zeros(alloc_stack(ONE_WORD, ONE_WORD));
+        fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
+        let heap1_orig = fill_zeros(alloc_heap(NO_WORDS, ONE_WORD, false));
+        let heap2_orig = fill_zeros(alloc_heap(NO_WORDS, ONE_WORD, false));
+        fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
+        DATA.with_borrow_mut(|data| {
+            data[stack] = heap1_orig.0;
+            data[stack + WORD_SIZE] = heap2_orig.0;
+            data[stack + WORD_SIZE * 2] = 333_333;
+            data[heap1_orig] = 444_444;
+            data[heap2_orig] = 555_555;
+        });
+        print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
+        assert_eq!(stack_size(), WordSize(12));
+        assert_eq!(young_heap_size(), WordSize(10));
+
     }
 
     #[test]

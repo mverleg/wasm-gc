@@ -773,7 +773,18 @@ mod tests {
         print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
         assert_eq!(stack_size(), WordSize(12));
         assert_eq!(young_heap_size(), WordSize(10));
-
+        let stats = collect_fast();
+        assert_eq!(young_heap_size(), NO_WORDS);
+        assert_eq!(stack_size(), WordSize(12));
+        assert_eq!(stats.initial_young_len, WordSize(10));
+        assert_eq!(stats.final_young_len, WordSize(4));
+        DATA.with_borrow(|data| {
+            let heap1_new = Pointer(data[stack]);
+            let heap2_new = Pointer(data[stack + WORD_SIZE]);
+            assert_eq!(data[stack + WORD_SIZE * 2], 333_333);
+            assert_eq!(data[heap1_new], 444_444);
+            assert_eq!(data[heap2_new], 555_555);
+        });
     }
 
     #[test]

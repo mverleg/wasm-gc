@@ -40,15 +40,15 @@ impl HeaderEnc {
         let size_32_u8: u8 = size_32.0.try_into().unwrap_or_else(|_| panic!("struct too large: {size_32}"));
         let pointer_cnt_u8: u8 = pointer_cnt.0.try_into().expect("should never be reached since pointer <= total");
         HeaderEnc::Small(i32::from_le_bytes([
+            kind.to_u8(),
+            flags,
             pointer_cnt_u8,
             size_32_u8,
-            flags,
-            kind.to_u8(),
         ]))
     }
 
     fn decode_struct(self, data: Nr) -> (u8, WordSize, WordSize) {
-        let [pointer_cnt_u8, size_32_u8, flags, typ] = data.to_le_bytes();
+        let [typ, flags, pointer_cnt_u8, size_32_u8] = data.to_le_bytes();
         debug_assert!(typ == DataKind::Struct.to_u8());
         (flags, WordSize(pointer_cnt_u8.into()), WordSize(size_32_u8.into()))
     }
@@ -79,10 +79,10 @@ fn mark_reachable(header: &mut Nr) {
     debug_assert!(typ == DataKind::Struct.to_u8());
     flags |= mask(true, GC_REACHABLE_FLAG_BIT);
     *header = Nr::from_le_bytes([
+        DataKind::Struct.to_u8(),
+        flags,
         other1,
         other2,
-        flags,
-        DataKind::Struct.to_u8(),
     ])
 
 }
@@ -717,11 +717,11 @@ mod tests {
     }
 
     fn read_pointer_cnt(header: Nr) -> WordSize {
-        WordSize(header.to_le_bytes()[0] as Nr)
+        WordSize(header.to_le_bytes()[2] as Nr)
     }
 
     fn read_data_size(header: Nr) -> WordSize {
-        WordSize(header.to_le_bytes()[1] as Nr)
+        WordSize(header.to_le_bytes()[3] as Nr)
     }
 
     #[test]
@@ -735,7 +735,6 @@ mod tests {
         let HeaderEnc::Small(nr) = header.encode() else {
             panic!()
         };
-        println!("{:#08x}", nr);
         assert_ne!(nr, 0);
         assert_eq!(Pointer(nr).aligned_down(), Pointer::null());
     }

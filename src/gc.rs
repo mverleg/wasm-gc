@@ -15,7 +15,7 @@ use ::std::ops::Range;
 type Nr = i32;
 
 const WORD_SIZE: ByteSize = ByteSize(4);
-const REDIRECT_BYTE: u8 = 1;  // chosen so that rounding to words makes this 0
+const FORWARD_BYTE: u8 = 1;  // chosen so that rounding to words makes this 0
 const STRUCT_BYTE: u8 = 4;
 const GC_REACHABLE_FLAG_BIT: u8 = 0;
 const POINTER_MUTABLE_FLAG_BIT: u8 = 1;
@@ -703,6 +703,21 @@ mod tests {
 
     fn read_data_size(header: Nr) -> WordSize {
         WordSize(header.to_le_bytes()[1] as Nr)
+    }
+
+    #[test]
+    fn forward_type_is_in_word_align_bits() {
+        let header = YoungHeapHeader {
+            data_kind: DataKind::Forward,
+            pointers_mutable: false,
+            pointer_cnt: WordSize(0),
+            size_32: WordSize(0),
+        };
+        let HeaderEnc::Small(nr) = header.encode() else {
+            panic!()
+        };
+        assert_ne!(nr, 0);
+        assert_eq!(Pointer(nr).aligned_down(), Pointer::null());
     }
 
     #[test]

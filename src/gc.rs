@@ -15,7 +15,8 @@ use ::std::ops::Range;
 type Nr = i32;
 
 const WORD_SIZE: ByteSize = ByteSize(4);
-const STRUCT_BYTE: u8 = 1;
+const REDIRECT_BYTE: u8 = 1;  // chosen so that rounding to words makes this 0
+const STRUCT_BYTE: u8 = 4;
 const GC_REACHABLE_FLAG_BIT: u8 = 0;
 const POINTER_MUTABLE_FLAG_BIT: u8 = 1;
 
@@ -41,15 +42,15 @@ impl HeaderEnc {
         let size_32_u8: u8 = size_32.0.try_into().unwrap_or_else(|_| panic!("struct too large: {size_32}"));
         let pointer_cnt_u8: u8 = pointer_cnt.0.try_into().expect("should never be reached since pointer <= total");
         HeaderEnc::Small(i32::from_le_bytes([
-            STRUCT_BYTE,
-            flags,
             pointer_cnt_u8,
             size_32_u8,
+            flags,
+            STRUCT_BYTE,
         ]))
     }
 
     fn decode_struct(self, data: Nr) -> (u8, WordSize, WordSize) {
-        let [typ, flags, pointer_cnt_u8, size_32_u8] = data.to_le_bytes();
+        let [pointer_cnt_u8, size_32_u8, flags, typ] = data.to_le_bytes();
         debug_assert!(typ == STRUCT_BYTE);
         (flags, WordSize(pointer_cnt_u8.into()), WordSize(size_32_u8.into()))
     }
@@ -80,10 +81,10 @@ fn mark_reachable(header: &mut Nr) {
     debug_assert!(typ == STRUCT_BYTE);
     flags |= mask(true, GC_REACHABLE_FLAG_BIT);
     *header = Nr::from_le_bytes([
-        STRUCT_BYTE,
-        flags,
         other1,
         other2,
+        flags,
+        STRUCT_BYTE,
     ])
 
 }
@@ -524,7 +525,7 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
         return;
     }
 
-    // Stop if already moved
+    // Update ref and stop if already moved
     todo!();
 
     // If old enough, move to old heap, and leave a pointer
@@ -697,11 +698,11 @@ mod tests {
     }
 
     fn read_pointer_cnt(header: Nr) -> WordSize {
-        WordSize(header.to_le_bytes()[2] as Nr)
+        WordSize(header.to_le_bytes()[0] as Nr)
     }
 
     fn read_data_size(header: Nr) -> WordSize {
-        WordSize(header.to_le_bytes()[3] as Nr)
+        WordSize(header.to_le_bytes()[1] as Nr)
     }
 
     #[test]

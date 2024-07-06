@@ -15,8 +15,6 @@ use ::std::ops::Range;
 type Nr = i32;
 
 const WORD_SIZE: ByteSize = ByteSize(4);
-const FORWARD_BYTE: u8 = 1;  // chosen so that rounding to words makes this 0
-const STRUCT_BYTE: u8 = 4;
 const GC_REACHABLE_FLAG_BIT: u8 = 0;
 const POINTER_MUTABLE_FLAG_BIT: u8 = 1;
 
@@ -37,7 +35,7 @@ struct StackHeader {
 enum HeaderEnc { Small(Nr), Big(Nr, Nr) }
 
 impl HeaderEnc {
-    fn of_struct(flags: u8, pointer_cnt: WordSize, size_32: WordSize) -> Self {
+    fn of_struct(flags: u8, pointer_cnt: WordSize, size_32: WordSize, kind: DataKind) -> Self {
         debug_assert!(pointer_cnt <= size_32, "pointer size cannot exceed total size");
         let size_32_u8: u8 = size_32.0.try_into().unwrap_or_else(|_| panic!("struct too large: {size_32}"));
         let pointer_cnt_u8: u8 = pointer_cnt.0.try_into().expect("should never be reached since pointer <= total");
@@ -45,13 +43,13 @@ impl HeaderEnc {
             pointer_cnt_u8,
             size_32_u8,
             flags,
-            STRUCT_BYTE,
+            kind.to_u8(),
         ]))
     }
 
     fn decode_struct(self, data: Nr) -> (u8, WordSize, WordSize) {
         let [pointer_cnt_u8, size_32_u8, flags, typ] = data.to_le_bytes();
-        debug_assert!(typ == STRUCT_BYTE);
+        debug_assert!(typ == DataKind::Struct.to_u8());
         (flags, WordSize(pointer_cnt_u8.into()), WordSize(size_32_u8.into()))
     }
 
@@ -78,13 +76,13 @@ impl HeaderEnc {
 fn mark_reachable(header: &mut Nr) {
     //TODO @mark: could probably mutate i32 directly
     let [typ, mut flags, other1, other2] = header.to_le_bytes();
-    debug_assert!(typ == STRUCT_BYTE);
+    debug_assert!(typ == DataKind::Struct.to_u8());
     flags |= mask(true, GC_REACHABLE_FLAG_BIT);
     *header = Nr::from_le_bytes([
         other1,
         other2,
         flags,
-        STRUCT_BYTE,
+        DataKind::Struct.to_u8(),
     ])
 
 }
@@ -92,7 +90,7 @@ fn mark_reachable(header: &mut Nr) {
 impl StackHeader {
     fn encode(self) -> HeaderEnc {
         let flags: u8 = 0;
-        HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32)
+        HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32, self.data_kind)
     }
 
     fn decode(data: Nr) -> Self {
@@ -109,6 +107,27 @@ impl StackHeader {
 enum DataKind { Struct, Array, Forward }
 //TODO @mark: dynamic dispatch?
 //TODO @mark: special kind for structs with more than 256 fields, and arrays of the same?
+
+impl DataKind {
+    fn from_u8(byte: u8) -> Self {
+        // none of these except froward may use last 2 bits
+        match byte {
+            4 => DataKind::Struct,
+            8 => DataKind::Array,
+            1 => DataKind::Forward,
+            nr => panic!("not supported type nr: {nr}"),
+        }
+    }
+
+    fn to_u8(self) -> u8 {
+        // none of these except froward may use last 2 bits
+        match self {
+            DataKind::Struct => 4,
+            DataKind::Array => 8,
+            DataKind::Forward => 1,
+        }
+    }
+}
 
 #[derive(Debug)]
 struct YoungHeapHeader {
@@ -133,7 +152,7 @@ impl YoungHeapHeader {
         // let flags: u8 = mask(self.gc_reachable, GC_REACHABLE_FLAG_BIT) &
         //     mask(self.pointers_mutable, POINTER_MUTABLE_FLAG_BIT);
         let flags: u8 = mask(self.pointers_mutable, POINTER_MUTABLE_FLAG_BIT);
-        HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32)
+        HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32, self.data_kind)
     }
 
     fn decode(data: Nr) -> Self {
@@ -716,6 +735,7 @@ mod tests {
         let HeaderEnc::Small(nr) = header.encode() else {
             panic!()
         };
+        println!("{:#08x}", nr);
         assert_ne!(nr, 0);
         assert_eq!(Pointer(nr).aligned_down(), Pointer::null());
     }

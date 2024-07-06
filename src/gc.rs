@@ -332,6 +332,10 @@ impl Data {
     pub fn len(&self) -> WordSize {
         WordSize((self.mem.len() / 4).try_into().unwrap())
     }
+
+    pub fn read_pointer(&self, ix: Pointer) -> Pointer {
+        Pointer(self[ix])
+    }
 }
 
 impl Index<Pointer> for Data {
@@ -362,11 +366,11 @@ thread_local! {
     ;
     static GC_STATE: RefCell<GcState> = {
         RefCell::new(GcState {
-            stack_top_frame: Pointer(0),
-            stack_top_data: Pointer(0),
+            stack_top_frame: Pointer::null(),
+            stack_top_data: Pointer::null(),
             young_side: Side::Left,
-            young_top: Pointer(0),
-            old_top: Pointer(0),
+            young_top: Pointer::null(),
+            old_top: Pointer::null(),
         })
     };
     static DATA: RefCell<Data> = {
@@ -469,10 +473,10 @@ pub fn stack_frame_push() {
 pub fn stack_frame_pop() {
     GC_STATE.with_borrow_mut(|state| {
         DATA.with_borrow_mut(|data| {
-            let prev_frame = data[state.stack_top_frame];
+            let prev_frame = data.read_pointer(state.stack_top_frame);
             assert_ne!(state.stack_top_frame, Pointer::null(), "stack is empty, cannot pop frame");
             state.stack_top_data = state.stack_top_frame;
-            state.stack_top_frame = Pointer(prev_frame);
+            state.stack_top_frame = prev_frame;
         });
     });
 }
@@ -514,7 +518,8 @@ impl TaskStack {
 
 fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_range: Range<Pointer>, new_young_top: &mut Pointer) {
     // Stop if stack or old heap, or if already moved to opposite young heap side
-    if !young_from_range.contains(&pointer_ix) {
+    let pointer = data.read_pointer(pointer_ix);
+    if !young_from_range.contains(&pointer) {
         println!("not young heap {}, stop (not in range {:?})", pointer_ix, young_from_range);
         return;
     }
@@ -560,7 +565,7 @@ pub fn collect_fast() -> FastCollectStats {
                         header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
                     }
                     frame_after = frame_start;
-                    frame_start = Pointer(data[frame_start]);
+                    frame_start = data.read_pointer(frame_start);
                 }
                 println!("stack END {}", frame_start);  //TODO @mark:
 
@@ -779,8 +784,8 @@ mod tests {
         assert_eq!(stats.initial_young_len, WordSize(10));
         assert_eq!(stats.final_young_len, WordSize(4));
         DATA.with_borrow(|data| {
-            let heap1_new = Pointer(data[stack]);
-            let heap2_new = Pointer(data[stack + WORD_SIZE]);
+            let heap1_new = data.read_pointer(stack);
+            let heap2_new = data.read_pointer(stack + WORD_SIZE);
             assert_eq!(data[stack + WORD_SIZE * 2], 333_333);
             assert_eq!(data[heap1_new], 444_444);
             assert_eq!(data[heap2_new], 555_555);
@@ -833,7 +838,7 @@ mod tests {
         }
         DATA.with_borrow_mut(|data| {
             assert_ne!(heap_immut.0, data[stack_ref], "immutable not moved from young to old");
-            let mut_addr = Pointer(data[stack_ref]);
+            let mut_addr = data.read_pointer(stack_ref);
             assert_eq!(heap_mut.0, data[mut_addr], "mutable data moved, it should stay young");
         });
 

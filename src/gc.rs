@@ -740,6 +740,23 @@ mod tests {
     }
 
     #[test]
+    fn data_kind_encode_decode() {
+        for kind in [DataKind::Struct, DataKind::Array, DataKind::Forward] {
+            assert_eq!(kind, DataKind::from_u8(kind.to_u8()));
+        }
+    }
+
+    #[test]
+    fn data_kinds_not_in_align_bits() {
+        let fwd = Pointer(DataKind::Forward.to_u8() as Nr);
+        assert_ne!(fwd, fwd.aligned_down());
+        let strct = Pointer(DataKind::Struct.to_u8() as Nr);
+        assert_eq!(strct, strct.aligned_down());
+        let array = Pointer(DataKind::Array.to_u8() as Nr);
+        assert_eq!(array, array.aligned_down());
+    }
+
+    #[test]
     fn alloc_heap_out_of_space() {
         reset();
         for _ in 0 .. 64 {

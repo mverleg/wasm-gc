@@ -15,6 +15,7 @@ use ::std::ops::Range;
 type Nr = i32;
 
 const WORD_SIZE: ByteSize = ByteSize(4);
+const START_FLAG_OFFSET_BITS: u8 = 8;
 const GC_REACHABLE_FLAG_BIT: u8 = 7;
 const POINTER_MUTABLE_FLAG_BIT: u8 = 6;
 const AGE_FLAG_MAX: u8 = 1 << 3;
@@ -76,15 +77,7 @@ impl HeaderEnc {
 
 fn mark_reachable(header: &mut Nr) {
     //TODO @mark: could probably mutate i32 directly
-    let [typ, mut flags, other1, other2] = header.to_le_bytes();
-    debug_assert!(typ == DataKind::Struct.to_u8());
-    flags |= mask(true, GC_REACHABLE_FLAG_BIT);
-    *header = Nr::from_le_bytes([
-        DataKind::Struct.to_u8(),
-        flags,
-        other1,
-        other2,
-    ])
+    *header |= mask(true, GC_REACHABLE_FLAG_BIT + START_FLAG_OFFSET_BITS);
 }
 
 impl StackHeader {
@@ -145,8 +138,8 @@ struct YoungHeapHeader {
     size_32: WordSize,
 }
 
-const fn mask(is_on: bool, ix: u8) -> u8 {
-    assert!(ix < 8);
+const fn mask(is_on: bool, ix: u8) -> Nr {
+    assert!(ix < 32);
     if !is_on {
         return 0;
     } else {
@@ -159,7 +152,10 @@ impl YoungHeapHeader {
         assert!(self.pointer_cnt.0 > 0 || !self.pointers_mutable);
         // let flags: u8 = mask(self.gc_reachable, GC_REACHABLE_FLAG_BIT) &
         //     mask(self.pointers_mutable, POINTER_MUTABLE_FLAG_BIT);
-        let flags: u8 = mask(self.pointers_mutable, POINTER_MUTABLE_FLAG_BIT);
+        let mut flags: u8 = 0;
+        if self.pointers_mutable {
+            flags |= 1 << POINTER_MUTABLE_FLAG_BIT;
+        }
         HeaderEnc::of_struct(flags, self.pointer_cnt, self.size_32, self.data_kind)
     }
 
@@ -776,6 +772,13 @@ mod tests {
         }
         let addr2 = alloc0_heap(WordSize(0), WordSize(255), false);
         assert!(addr2.is_none());
+    }
+
+    #[test]
+    fn header_manipulation() {
+        let mut nr: Nr = 0x00000004;
+        mark_reachable(&mut nr);
+        assert_eq!(nr, 0x00008004);
     }
 
     #[test]

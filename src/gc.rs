@@ -279,6 +279,14 @@ impl WordSize {
     }
 }
 
+impl Add for WordSize {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        WordSize(self.0 + rhs.0)
+    }
+}
+
 impl fmt::Display for WordSize {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
@@ -552,6 +560,10 @@ impl TaskStack {
     }
 }
 
+fn mem_copy(data: &mut Data, from: Pointer, to: Pointer, len: WordSize) {
+    todo!()
+}
+
 fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_range: Range<Pointer>, new_young_top: &mut Pointer) {
     // Stop if stack or old heap, or if already moved to opposite young heap side
     let mut pointer_data = &mut data[pointer_ix];
@@ -572,70 +584,71 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     debug_assert!(gc_age < 7, "too old for young gc");
 
     // Otherwise (if not old), move to other side of young heap, and leave a pointer
-    todo!();
-    // increase: new_young_top
+    //TODO @mark: make sure pointer is the header, as opposed to first data word
+    println!("at {} header {}", pointer, pointer_data);
+    let header = YoungHeapHeader::decode(*pointer_data);
+    let len = header.size_32 + WordSize(1);
+    mem_copy(data, pointer, *new_young_top, len);
+    *new_young_top = *new_young_top + len.bytes();
 
     // We do not handle pointers directly, instead we'll do so while walking the young heap
+    todo!()
 }
 
 pub fn collect_fast() -> FastCollectStats {
-    GC_CONF.with_borrow(|conf| {
-        GC_STATE.with_borrow_mut(|state| {
-            DATA.with_borrow_mut(|data| {
-                let young_from_range = conf.young_side_start(state.young_side) .. conf.young_side_end(state.young_side);
-                let new_young_start =  conf.young_side_start(state.young_side.opposite());
-                let mut new_young_top = new_young_start;
-                let init_young_size = state.young_top - conf.young_side_start(state.young_side);
+    GC_CONF.with_borrow(|conf| { GC_STATE.with_borrow_mut(|state| { DATA.with_borrow_mut(|data| {
+        let young_from_range = conf.young_side_start(state.young_side) .. conf.young_side_end(state.young_side);
+        let new_young_start =  conf.young_side_start(state.young_side.opposite());
+        let mut new_young_top = new_young_start;
+        let init_young_size = state.young_top - conf.young_side_start(state.young_side);
 
-                // First walk the stack for roots
-                let mut frame_start = state.stack_top_frame;
-                let mut frame_after = state.stack_top_data;
-                while frame_start != Pointer::null() {
-                    println!("stack frame {}", frame_start);  //TODO @mark:
-                    let mut header_ix = frame_start + WORD_SIZE;
-                    while header_ix < frame_after {
-                        let header = StackHeader::decode(data[header_ix]);
-                        println!("stack object {}, header {:?}", header_ix, header);  //TODO @mark:
-                        let mut pointer_ix = header_ix + WORD_SIZE;
-                        let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
-                        while pointer_ix < header_ix + pointer_end {
-                            println!("stack pointer {}", pointer_ix);  //TODO @mark:
-                            pointer_ix = pointer_ix + WORD_SIZE;
-                            collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
-                        }
-                        header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
-                    }
-                    frame_after = frame_start;
-                    frame_start = data.read_pointer(frame_start);
+        // First walk the stack for roots
+        let mut frame_start = state.stack_top_frame;
+        let mut frame_after = state.stack_top_data;
+        while frame_start != Pointer::null() {
+            println!("stack frame {}", frame_start);  //TODO @mark:
+            let mut header_ix = frame_start + WORD_SIZE;
+            while header_ix < frame_after {
+                let header = StackHeader::decode(data[header_ix]);
+                println!("stack object {}, header {:?}", header_ix, header);  //TODO @mark:
+                let mut pointer_ix = header_ix + WORD_SIZE;
+                let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
+                while pointer_ix < header_ix + pointer_end {
+                    println!("stack pointer {}", pointer_ix);  //TODO @mark:
+                    pointer_ix = pointer_ix + WORD_SIZE;
+                    collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
                 }
-                println!("stack END {}", frame_start);  //TODO @mark:
+                header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
+            }
+            frame_after = frame_start;
+            frame_start = data.read_pointer(frame_start);
+        }
+        println!("stack END {}", frame_start);  //TODO @mark:
 
-                // Having found all stack roots, handle the young heap by scanning flip side
-                // Note that the young heap still grows (new_young_top)
-                let mut header_ix = new_young_start;
-                println!("young {:?} {} -> {} ({:?})", state.young_side.opposite(), header_ix, new_young_top, new_young_top - header_ix);  //TODO @mark:
-                while header_ix < new_young_top {
-                    let header = YoungHeapHeader::decode(data[header_ix]);
-                    let mut pointer_ix = header_ix + WORD_SIZE;
-                    let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
-                    while pointer_ix < header_ix + pointer_end {
-                        pointer_ix = pointer_ix + WORD_SIZE;
-                        collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
-                    }
-                    header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
-                }
+        // Having found all stack roots, handle the young heap by scanning flip side
+        // Note that the young heap still grows (new_young_top)
+        let mut header_ix = new_young_start;
+        println!("young {:?} {} -> {} ({:?})", state.young_side.opposite(), header_ix, new_young_top, new_young_top - header_ix);  //TODO @mark:
+        while header_ix < new_young_top {
+            let header = YoungHeapHeader::decode(data[header_ix]);
+            let mut pointer_ix = header_ix + WORD_SIZE;
+            let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
+            while pointer_ix < header_ix + pointer_end {
+                pointer_ix = pointer_ix + WORD_SIZE;
+                collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
+            }
+            header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
+        }
 
-                state.young_side = state.young_side.opposite();
-                state.young_top = new_young_top;
-                FastCollectStats {
-                    initial_young_capacity: conf.young_side_capacity,
-                    initial_young_len: init_young_size.whole_words(),
-                    final_young_capacity: conf.young_side_capacity,
-                    final_young_len: WordSize(0),
-                }
-            })
-        })
-    })
+        state.young_side = state.young_side.opposite();
+        state.young_top = new_young_top;
+        FastCollectStats {
+            initial_young_capacity: conf.young_side_capacity,
+            initial_young_len: init_young_size.whole_words(),
+            final_young_capacity: conf.young_side_capacity,
+            final_young_len: WordSize(0),
+        }
+    }) }) })
 }
 
 pub fn collect_full() {

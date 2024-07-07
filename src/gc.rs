@@ -312,7 +312,7 @@ impl Pointer {
 
 impl fmt::Display for Pointer {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "x{}", self.0)
+        write!(f, "@{}", self.0)
     }
 }
 
@@ -570,8 +570,8 @@ fn mem_copy(data: &mut Data, from: Pointer, to: Pointer, len: WordSize) {
 
 fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_range: Range<Pointer>, new_young_top: &mut Pointer) {
     // Stop if stack or old heap, or if already moved to opposite young heap side
-    let mut pointer_data = &mut data[pointer_ix];
-    let mut pointer = Pointer(*pointer_data);
+    let mut pointer_data = data[pointer_ix];
+    let mut pointer = Pointer(pointer_data);
     if !young_from_range.contains(&pointer) {
         println!("not young heap {}, stop (not in range {:?})", pointer_ix, young_from_range);
         return;
@@ -584,16 +584,23 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     }
 
     // If old enough, move to old heap, and leave a pointer
-    let gc_age = increment_gc_age(&mut pointer_data);
+    let mut pointer_hdr = &mut data[pointer - WORD_SIZE];
+    println!("at {} from {} header {:#x}", pointer - WORD_SIZE, pointer_ix, pointer_hdr);
+    let gc_age = increment_gc_age(&mut pointer_hdr);
     debug_assert!(gc_age < 7, "too old for young gc");
 
-    // Otherwise (if not old), move to other side of young heap, and leave a pointer
+    // Otherwise (if not old), move to other side of young heap
     //TODO @mark: make sure pointer is the header, as opposed to first data word
-    println!("at {} header {}", pointer, pointer_data);
-    let header = YoungHeapHeader::decode(*pointer_data);
+    let header = YoungHeapHeader::decode(*pointer_hdr);
     let len = header.size_32 + WordSize(1);
+    let new_addr = *new_young_top + WORD_SIZE;
     mem_copy(data, pointer, *new_young_top, len);
     *new_young_top = *new_young_top + len.bytes();
+
+    // Update incoming pointer and leave a forward
+    data[pointer_ix] = new_addr;
+    todo!("update incoming pointer");
+    todo!("leave a forward");
 
     // We do not handle pointers directly, instead we'll do so while walking the young heap
     todo!()
@@ -618,7 +625,7 @@ pub fn collect_fast() -> FastCollectStats {
                 let mut pointer_ix = header_ix + WORD_SIZE;
                 let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
                 while pointer_ix < header_ix + pointer_end {
-                    println!("stack pointer {}", pointer_ix);  //TODO @mark:
+                    println!("stack pointer {} from obj {}", pointer_ix, header_ix);  //TODO @mark:
                     pointer_ix = pointer_ix + WORD_SIZE;
                     collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
                 }
@@ -637,7 +644,9 @@ pub fn collect_fast() -> FastCollectStats {
             let header = YoungHeapHeader::decode(data[header_ix]);
             let mut pointer_ix = header_ix + WORD_SIZE;
             let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
+            println!("task header {:?}", header);  //TODO @mark:
             while pointer_ix < header_ix + pointer_end {
+                println!("task pointer {}", pointer_ix);  //TODO @mark:
                 pointer_ix = pointer_ix + WORD_SIZE;
                 collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
             }
@@ -716,7 +725,7 @@ mod tests {
                 println!("{ix}:\tinit");
             } else {
                 let bytes = i32::to_le_bytes(val);
-                println!("{ix}:\t{}\t{}\t{}\t{}", bytes[0], bytes[1], bytes[2], bytes[3]);
+                println!("{ix}:\t{}\t{}\t{}\t{}\t = {} / {:#x}", bytes[0], bytes[1], bytes[2], bytes[3], val, val);
             }
         }
         GC_CONF.with_borrow(|conf| {

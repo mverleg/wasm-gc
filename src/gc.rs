@@ -15,8 +15,9 @@ use ::std::ops::Range;
 type Nr = i32;
 
 const WORD_SIZE: ByteSize = ByteSize(4);
-const GC_REACHABLE_FLAG_BIT: u8 = 0;
-const POINTER_MUTABLE_FLAG_BIT: u8 = 1;
+const GC_REACHABLE_FLAG_BIT: u8 = 7;
+const POINTER_MUTABLE_FLAG_BIT: u8 = 6;
+const AGE_FLAG_MAX: u8 = 1 << 3;
 
 // TODO how to handle 0-byte allocations? is there reference equality anywhere?
 // TODO have some post-GC handler?
@@ -84,7 +85,6 @@ fn mark_reachable(header: &mut Nr) {
         other1,
         other2,
     ])
-
 }
 
 impl StackHeader {
@@ -125,6 +125,14 @@ impl DataKind {
             DataKind::Struct => 4,
             DataKind::Array => 8,
             DataKind::Forward => 1,
+        }
+    }
+
+    fn try_as_forward(pointer: Pointer) -> Option<Pointer> {
+        if pointer.0 & 0x1 != 0 {
+            Some(pointer.aligned_down())
+        } else {
+            None
         }
     }
 }
@@ -545,7 +553,10 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     }
 
     // Update ref and stop if already moved
-    todo!();
+    if let Some(forward) = DataKind::try_as_forward(pointer) {
+        println!("forward at {} from {} to {}", pointer_ix, pointer, forward);
+        todo!();
+    }
 
     // If old enough, move to old heap, and leave a pointer
     // TODO: not yet supported
@@ -783,7 +794,7 @@ mod tests {
         reset();
         let orig = alloc_heap(ONE_WORD, THREE_WORDS, false);
         let subsequent = alloc_heap(TWO_WORDS, THREE_WORDS, false);
-        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x03010001));
+        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x03010004));
         assert_eq!(subsequent - orig, ByteSize(16));
         assert_eq!(young_heap_size(), WordSize(8));
         assert_eq!(stack_size(), NO_WORDS);
@@ -796,7 +807,7 @@ mod tests {
         let orig = alloc_stack(ONE_WORD, THREE_WORDS);
         stack_frame_push();
         let subsequent = alloc_stack(TWO_WORDS, THREE_WORDS);
-        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x03010001));
+        DATA.with_borrow_mut(|data| assert_eq!(data[orig - WORD_SIZE], 0x03010004));
         assert_eq!(subsequent - orig, WORD_SIZE * 5);
         assert_eq!(stack_size(), WordSize(1 + 1 + 3 + 1 + 1 + 3));
         stack_frame_pop();
@@ -842,6 +853,7 @@ mod tests {
             assert_eq!(data[heap1_new], 444_444);
             assert_eq!(data[heap2_new], 555_555);
         });
+        todo!("have aliassed pointer to make sure redirects are followed")
     }
 
     #[test]

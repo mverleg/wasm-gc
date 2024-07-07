@@ -18,7 +18,6 @@ const WORD_SIZE: ByteSize = ByteSize(4);
 const START_FLAG_OFFSET_BITS: u8 = 8;
 const GC_REACHABLE_FLAG_BIT: u8 = 7;
 const POINTER_MUTABLE_FLAG_BIT: u8 = 6;
-const AGE_FLAG_MAX: u8 = 1 << 3;
 
 // TODO how to handle 0-byte allocations? is there reference equality anywhere?
 // TODO have some post-GC handler?
@@ -76,8 +75,22 @@ impl HeaderEnc {
 }
 
 fn mark_reachable(header: &mut Nr) {
-    //TODO @mark: could probably mutate i32 directly
     *header |= mask(true, GC_REACHABLE_FLAG_BIT + START_FLAG_OFFSET_BITS);
+}
+
+fn get_gc_age(header: Nr) -> i32 {
+    // the number if in the lowest 3 bits of flag
+    println!("orig:\t{:#0x}", header);  //TODO @mark: TEMPORARY! REMOVE THIS!
+    println!("shift:\t{:#0x}", header >> START_FLAG_OFFSET_BITS);  //TODO @mark: TEMPORARY! REMOVE THIS!
+    println!("&-8:\t{:#0x}", (header >> START_FLAG_OFFSET_BITS) & 0x7);  //TODO @mark: TEMPORARY! REMOVE THIS!
+    (header >> START_FLAG_OFFSET_BITS) & 0x7
+}
+
+fn increment_gc_age(header: &mut Nr) {
+    let prev_age = get_gc_age(*header);
+    let next_age = if prev_age < 7 { prev_age + 1 } else { 7 };
+    println!("prev_age = {prev_age} -> next_age {next_age}");  //TODO @mark: TEMPORARY! REMOVE THIS!
+
 }
 
 impl StackHeader {
@@ -779,6 +792,12 @@ mod tests {
         let mut nr: Nr = 0x00000004;
         mark_reachable(&mut nr);
         assert_eq!(nr, 0x00008004);
+        increment_gc_age(&mut nr);
+        assert_eq!(nr, 0x00008104);
+        increment_gc_age(&mut nr);
+        assert_eq!(nr, 0x00008204);
+        let age = get_gc_age(nr);
+        assert_eq!(nr, 2);
     }
 
     #[test]

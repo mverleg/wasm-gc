@@ -80,9 +80,6 @@ fn mark_reachable(header: &mut Nr) {
 
 fn get_gc_age(header: Nr) -> i32 {
     // the number if in the lowest 3 bits of flag
-    println!("orig:\t{:#0x}", header);  //TODO @mark: TEMPORARY! REMOVE THIS!
-    println!("shift:\t{:#0x}", header >> START_FLAG_OFFSET_BITS);  //TODO @mark: TEMPORARY! REMOVE THIS!
-    println!("&-8:\t{:#0x}", (header >> START_FLAG_OFFSET_BITS) & 0x7);  //TODO @mark: TEMPORARY! REMOVE THIS!
     (header >> START_FLAG_OFFSET_BITS) & 0x7
 }
 
@@ -90,7 +87,13 @@ fn increment_gc_age(header: &mut Nr) {
     let prev_age = get_gc_age(*header);
     let next_age = if prev_age < 7 { prev_age + 1 } else { 7 };
     println!("prev_age = {prev_age} -> next_age {next_age}");  //TODO @mark: TEMPORARY! REMOVE THIS!
-
+    // clear age and insert new one (play with masks: https://www.binaryconvert.com/result_signed_int.html)
+    println!("header 1 = {:#x}", header);  //TODO @mark: TEMPORARY! REMOVE THIS!
+    println!("mask {}", (-8 << START_FLAG_OFFSET_BITS) + 255);  //TODO @mark: TEMPORARY! REMOVE THIS!
+    *header &= (-8 << START_FLAG_OFFSET_BITS) + 255;
+    println!("header 2 = {:#x}", header);  //TODO @mark: TEMPORARY! REMOVE THIS!
+    *header |= next_age << START_FLAG_OFFSET_BITS;
+    println!("header 3 = {:#x}", header);  //TODO @mark: TEMPORARY! REMOVE THIS!
 }
 
 impl StackHeader {
@@ -796,8 +799,12 @@ mod tests {
         assert_eq!(nr, 0x00008104);
         increment_gc_age(&mut nr);
         assert_eq!(nr, 0x00008204);
-        let age = get_gc_age(nr);
-        assert_eq!(nr, 2);
+        assert_eq!(get_gc_age(nr), 2);
+        for _ in 0 .. 12 {
+            increment_gc_age(&mut nr);
+        }
+        assert_eq!(nr, 0x00008704);
+        assert_eq!(get_gc_age(nr), 7);
     }
 
     #[test]

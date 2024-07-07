@@ -50,7 +50,7 @@ impl HeaderEnc {
 
     fn decode_struct(self, data: Nr) -> (u8, WordSize, WordSize) {
         let [typ, flags, pointer_cnt_u8, size_32_u8] = data.to_le_bytes();
-        debug_assert!(typ == DataKind::Struct.to_u8());
+        debug_assert!(typ == DataKind::Struct.to_u8(), "unknown type {typ}");
         (flags, WordSize(pointer_cnt_u8.into()), WordSize(size_32_u8.into()))
     }
 
@@ -561,7 +561,11 @@ impl TaskStack {
 }
 
 fn mem_copy(data: &mut Data, from: Pointer, to: Pointer, len: WordSize) {
-    todo!()
+    let mut off = ByteSize(0);
+    while off < len.bytes() {
+        data[to + off] = data[from + off];
+        off = off + WORD_SIZE
+    }
 }
 
 fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_range: Range<Pointer>, new_young_top: &mut Pointer) {

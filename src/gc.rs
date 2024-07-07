@@ -83,17 +83,13 @@ fn get_gc_age(header: Nr) -> i32 {
     (header >> START_FLAG_OFFSET_BITS) & 0x7
 }
 
-fn increment_gc_age(header: &mut Nr) {
+fn increment_gc_age(header: &mut Nr) -> Nr {
     let prev_age = get_gc_age(*header);
     let next_age = if prev_age < 7 { prev_age + 1 } else { 7 };
-    println!("prev_age = {prev_age} -> next_age {next_age}");  //TODO @mark: TEMPORARY! REMOVE THIS!
     // clear age and insert new one (play with masks: https://www.binaryconvert.com/result_signed_int.html)
-    println!("header 1 = {:#x}", header);  //TODO @mark: TEMPORARY! REMOVE THIS!
-    println!("mask {}", (-8 << START_FLAG_OFFSET_BITS) + 255);  //TODO @mark: TEMPORARY! REMOVE THIS!
     *header &= (-8 << START_FLAG_OFFSET_BITS) + 255;
-    println!("header 2 = {:#x}", header);  //TODO @mark: TEMPORARY! REMOVE THIS!
     *header |= next_age << START_FLAG_OFFSET_BITS;
-    println!("header 3 = {:#x}", header);  //TODO @mark: TEMPORARY! REMOVE THIS!
+    next_age
 }
 
 impl StackHeader {
@@ -558,7 +554,8 @@ impl TaskStack {
 
 fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_range: Range<Pointer>, new_young_top: &mut Pointer) {
     // Stop if stack or old heap, or if already moved to opposite young heap side
-    let pointer = data.read_pointer(pointer_ix);
+    let mut pointer_data = &mut data[pointer_ix];
+    let mut pointer = Pointer(*pointer_data);
     if !young_from_range.contains(&pointer) {
         println!("not young heap {}, stop (not in range {:?})", pointer_ix, young_from_range);
         return;
@@ -571,7 +568,8 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     }
 
     // If old enough, move to old heap, and leave a pointer
-    // TODO: not yet supported
+    let gc_age = increment_gc_age(&mut pointer_data);
+    debug_assert!(gc_age < 7, "too old for young gc");
 
     // Otherwise (if not old), move to other side of young heap, and leave a pointer
     todo!();

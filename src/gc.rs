@@ -142,6 +142,10 @@ impl DataKind {
     }
 }
 
+fn new_forward(pointer: Pointer) -> Nr {
+    pointer.0 | 0x1
+}
+
 #[derive(Debug)]
 struct YoungHeapHeader {
     data_kind: DataKind,
@@ -598,9 +602,9 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     *new_young_top = *new_young_top + len.bytes();
 
     // Update incoming pointer and leave a forward
-    data[pointer_ix] = new_addr;
-    todo!("update incoming pointer");
-    todo!("leave a forward");
+    println!("update {pointer_ix} to {new_addr} with forward at {pointer}");
+    data[pointer] = new_forward(new_addr);
+    data[pointer_ix] = new_addr.0;
 
     // We do not handle pointers directly, instead we'll do so while walking the young heap
     todo!()

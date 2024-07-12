@@ -589,18 +589,18 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     }
 
     // If old enough, move to old heap, and leave a pointer
-    let pointer_hdr = pointer - WORD_SIZE;
-    let mut header_data = &mut data[pointer_hdr];
-    println!("at {} from {} header {:#x}", pointer - WORD_SIZE, pointer_ix, header_data);
+    let header_pointer = pointer - WORD_SIZE;
+    let mut header_data = &mut data[header_pointer];
+    println!("at {} from {} header {:#x}", header_pointer, pointer_ix, header_data);
     let gc_age = increment_gc_age(&mut header_data);
     debug_assert!(gc_age < 7, "too old for young gc");
 
     // Otherwise (if not old), move to other side of young heap
     let header = YoungHeapHeader::decode(*header_data);
     let len = header.size_32 + WordSize(1);
-    println!("MOVE young side {len} from {pointer_hdr} to {new_young_top}");  //TODO @mark: TEMPORARY! REMOVE THIS!
+    println!("MOVE young side {len} from {header_pointer} to {new_young_top}");  //TODO @mark: TEMPORARY! REMOVE THIS!
     let new_addr = *new_young_top + WORD_SIZE;
-    mem_copy(data, pointer_hdr, *new_young_top, len);
+    mem_copy(data, header_pointer, *new_young_top, len);
     *new_young_top = *new_young_top + len.bytes();
 
     // Update incoming pointer and leave a forward
@@ -627,13 +627,13 @@ pub fn collect_fast() -> FastCollectStats {
             let mut header_ix = frame_start + WORD_SIZE;
             while header_ix < frame_after {
                 let header = StackHeader::decode(data[header_ix]);
-                println!("stack object {}, header {:?}", header_ix, header);  //TODO @mark:
                 let mut pointer_ix = header_ix + WORD_SIZE;
+                println!("stack object {header_ix}, header {:?}, scan from {pointer_ix}", header);  //TODO @mark:
                 let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;
                 while pointer_ix < header_ix + pointer_end {
                     println!("stack pointer {} from obj {}", pointer_ix, header_ix);  //TODO @mark:
-                    pointer_ix = pointer_ix + WORD_SIZE;
                     collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
+                    pointer_ix = pointer_ix + WORD_SIZE;
                 }
                 header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
             }
@@ -666,7 +666,7 @@ pub fn collect_fast() -> FastCollectStats {
             initial_young_capacity: conf.young_side_capacity,
             initial_young_len: init_young_size.whole_words(),
             final_young_capacity: conf.young_side_capacity,
-            final_young_len: WordSize(0),
+            final_young_len: (new_young_top - new_young_start).whole_words(),
         }
     }) }) })
 }
@@ -903,7 +903,7 @@ mod tests {
         assert_eq!(young_heap_size(), WordSize(10));
         let stats = collect_fast();
         print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
-        assert_eq!(young_heap_size(), NO_WORDS);
+        assert_eq!(young_heap_size(), WordSize(2));
         assert_eq!(stack_size(), WordSize(12));
         assert_eq!(stats.initial_young_len, WordSize(10));
         assert_eq!(stats.final_young_len, WordSize(4));

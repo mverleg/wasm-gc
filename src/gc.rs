@@ -584,7 +584,8 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     // Update ref and stop if already moved
     if let Some(forward) = DataKind::try_as_forward(pointer) {
         println!("forward at {} from {} to {}", pointer_ix, pointer, forward);
-        todo!();
+        data[pointer_ix] = forward.0;
+        return;
     }
 
     // If old enough, move to old heap, and leave a pointer
@@ -594,7 +595,6 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     debug_assert!(gc_age < 7, "too old for young gc");
 
     // Otherwise (if not old), move to other side of young heap
-    //TODO @mark: make sure pointer is the header, as opposed to first data word
     let header = YoungHeapHeader::decode(*pointer_hdr);
     let len = header.size_32 + WordSize(1);
     let new_addr = *new_young_top + WORD_SIZE;
@@ -606,8 +606,8 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     data[pointer] = new_forward(new_addr);
     data[pointer_ix] = new_addr.0;
 
-    // We do not handle pointers directly, instead we'll do so while walking the young heap
-    todo!()
+    // We don't need to recurse or enqueue tasks, since we'll
+    // walk the new young heap to process all pointers.
 }
 
 pub fn collect_fast() -> FastCollectStats {
@@ -645,6 +645,7 @@ pub fn collect_fast() -> FastCollectStats {
         let mut header_ix = new_young_start;
         println!("young {:?} {} -> {} ({:?})", state.young_side.opposite(), header_ix, new_young_top, new_young_top - header_ix);  //TODO @mark:
         while header_ix < new_young_top {
+            println!("header: {:?} at {}", data[header_ix], header_ix);
             let header = YoungHeapHeader::decode(data[header_ix]);
             let mut pointer_ix = header_ix + WORD_SIZE;
             let mut pointer_end = header.pointer_cnt.bytes() + WORD_SIZE;

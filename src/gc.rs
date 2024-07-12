@@ -589,16 +589,18 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     }
 
     // If old enough, move to old heap, and leave a pointer
-    let mut pointer_hdr = &mut data[pointer - WORD_SIZE];
-    println!("at {} from {} header {:#x}", pointer - WORD_SIZE, pointer_ix, pointer_hdr);
-    let gc_age = increment_gc_age(&mut pointer_hdr);
+    let pointer_hdr = pointer - WORD_SIZE;
+    let mut header_data = &mut data[pointer_hdr];
+    println!("at {} from {} header {:#x}", pointer - WORD_SIZE, pointer_ix, header_data);
+    let gc_age = increment_gc_age(&mut header_data);
     debug_assert!(gc_age < 7, "too old for young gc");
 
     // Otherwise (if not old), move to other side of young heap
-    let header = YoungHeapHeader::decode(*pointer_hdr);
+    let header = YoungHeapHeader::decode(*header_data);
     let len = header.size_32 + WordSize(1);
+    println!("MOVE young side {len} from {pointer_hdr} to {new_young_top}");  //TODO @mark: TEMPORARY! REMOVE THIS!
     let new_addr = *new_young_top + WORD_SIZE;
-    mem_copy(data, pointer, *new_young_top, len);
+    mem_copy(data, pointer_hdr, *new_young_top, len);
     *new_young_top = *new_young_top + len.bytes();
 
     // Update incoming pointer and leave a forward
@@ -900,6 +902,7 @@ mod tests {
         assert_eq!(stack_size(), WordSize(12));
         assert_eq!(young_heap_size(), WordSize(10));
         let stats = collect_fast();
+        print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
         assert_eq!(young_heap_size(), NO_WORDS);
         assert_eq!(stack_size(), WordSize(12));
         assert_eq!(stats.initial_young_len, WordSize(10));

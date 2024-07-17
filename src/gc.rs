@@ -888,33 +888,34 @@ mod tests {
         let stack = fill_zeros(alloc_stack(TWO_WORDS, THREE_WORDS));
         fill_zeros(alloc_stack(ONE_WORD, ONE_WORD));
         fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
-        let heap1_orig = fill_zeros(alloc_heap(NO_WORDS, ONE_WORD, false));
+        let heap1_orig = fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
         let heap2_orig = fill_zeros(alloc_heap(NO_WORDS, ONE_WORD, false));
         fill_zeros(alloc_heap(ONE_WORD, TWO_WORDS, false));
         DATA.with_borrow_mut(|data| {
             data[stack] = heap1_orig.0;
             data[stack + WORD_SIZE] = heap2_orig.0;
             data[stack + WORD_SIZE * 2] = 333_333;
-            data[heap1_orig] = 444_444;
+            data[heap1_orig] = heap2_orig.0;
+            data[heap1_orig + WORD_SIZE] = 444_444;
             data[heap2_orig] = 555_555;
         });
         print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
         assert_eq!(stack_size(), WordSize(12));
-        assert_eq!(young_heap_size(), WordSize(10));
+        assert_eq!(young_heap_size(), WordSize(11));
         let stats = collect_fast();
         print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
-        assert_eq!(young_heap_size(), WordSize(2));
+        assert_eq!(young_heap_size(), WordSize(5));
         assert_eq!(stack_size(), WordSize(12));
-        assert_eq!(stats.initial_young_len, WordSize(10));
-        assert_eq!(stats.final_young_len, WordSize(4));
+        assert_eq!(stats.initial_young_len, WordSize(11));
+        assert_eq!(stats.final_young_len, WordSize(5));
         DATA.with_borrow(|data| {
             let heap1_new = data.read_pointer(stack);
             let heap2_new = data.read_pointer(stack + WORD_SIZE);
             assert_eq!(data[stack + WORD_SIZE * 2], 333_333);
-            assert_eq!(data[heap1_new], 444_444);
+            assert_eq!(data[heap1_new], heap2_new.0);
+            assert_eq!(data[heap1_new + WORD_SIZE], 444_444);
             assert_eq!(data[heap2_new], 555_555);
         });
-        todo!("have aliassed pointer to make sure redirects are followed")
     }
 
     #[test]

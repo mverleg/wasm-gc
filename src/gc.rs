@@ -50,6 +50,7 @@ impl HeaderEnc {
 
     fn decode_struct(self, data: Nr) -> (u8, WordSize, WordSize) {
         let [typ, flags, pointer_cnt_u8, size_32_u8] = data.to_le_bytes();
+        debug_assert!(DataKind::try_as_forward(typ as Nr).is_none(), "not a type, found GC forward");
         debug_assert!(typ == DataKind::Struct.to_u8(), "unknown type {typ}");
         (flags, WordSize(pointer_cnt_u8.into()), WordSize(size_32_u8.into()))
     }
@@ -133,9 +134,9 @@ impl DataKind {
         }
     }
 
-    fn try_as_forward(pointer: Pointer) -> Option<Pointer> {
-        if pointer.0 & 0x1 != 0 {
-            Some(pointer.aligned_down())
+    fn try_as_forward(header: Nr) -> Option<Pointer> {
+        if header & 0x1 != 0 {
+            Some(Pointer(header).aligned_down())
         } else {
             None
         }
@@ -582,17 +583,20 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     }
 
     // Update ref and stop if already moved
-    if let Some(forward) = DataKind::try_as_forward(pointer) {
-        println!("forward at {} from {} to {}", pointer_ix, pointer, forward);
+    let header_pointer = pointer - WORD_SIZE;
+    let mut header_data = &mut data[header_pointer];
+    if let Some(forward) = DataKind::try_as_forward(*header_data) {
+        println!("found a forward: forward to {forward} from {header_data} at {header_pointer} (from {pointer_ix})");
         data[pointer_ix] = forward.0;
         return;
+    } else {
+        println!("not a forward: header {header_data} at {header_pointer} from {pointer_ix}");
     }
 
     // If old enough, move to old heap, and leave a pointer
-    let header_pointer = pointer - WORD_SIZE;
-    let mut header_data = &mut data[header_pointer];
     println!("at {} from {} header {:#x}", header_pointer, pointer_ix, header_data);
     let gc_age = increment_gc_age(&mut header_data);
+    debug_assert!(gc_age < 2);  //TODO @mark: TEMPORARY! REMOVE THIS!
     debug_assert!(gc_age < 7, "too old for young gc");
 
     // Otherwise (if not old), move to other side of young heap
@@ -604,8 +608,9 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     *new_young_top = *new_young_top + len.bytes();
 
     // Update incoming pointer and leave a forward
-    println!("update {pointer_ix} to {new_addr} with forward at {pointer}");
-    data[pointer] = new_forward(new_addr);
+    println!("create forward at {header_pointer}: {} (was {}) to {new_addr} ", Pointer(new_forward(new_addr)), Pointer(data[header_pointer]));  //TODO @mark:
+    data[header_pointer] = new_forward(new_addr);
+    println!("update {pointer_ix} to {new_addr}");
     data[pointer_ix] = new_addr.0;
 
     // We don't need to recurse or enqueue tasks, since we'll
@@ -654,14 +659,15 @@ pub fn collect_fast() -> FastCollectStats {
             println!("task header {:?}", header);  //TODO @mark:
             while pointer_ix < header_ix + pointer_end {
                 println!("task pointer {}", pointer_ix);  //TODO @mark:
-                pointer_ix = pointer_ix + WORD_SIZE;
                 collect_fast_handle_pointer(data, pointer_ix, young_from_range.clone(), &mut new_young_top);
+                pointer_ix = pointer_ix + WORD_SIZE;
             }
             header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
         }
 
-        state.young_side = state.young_side.opposite();
-        state.young_top = new_young_top;
+        eprintln!("re-enable: young_side, young_top"); //TODO @mark:
+        // state.young_side = state.young_side.opposite();
+        // state.young_top = new_young_top;
         FastCollectStats {
             initial_young_capacity: conf.young_side_capacity,
             initial_young_len: init_young_size.whole_words(),
@@ -904,6 +910,7 @@ mod tests {
         assert_eq!(young_heap_size(), WordSize(11));
         let stats = collect_fast();
         print_memory();  //TODO @mark: TEMPORARY! REMOVE THIS!
+        //TODO @mark: it was working before I "fixed" new young heap pointer chasing, now it copies an extra object
         assert_eq!(young_heap_size(), WordSize(5));
         assert_eq!(stack_size(), WordSize(12));
         assert_eq!(stats.initial_young_len, WordSize(11));
@@ -917,6 +924,8 @@ mod tests {
             assert_eq!(data[heap2_new], 555_555);
         });
     }
+
+    //TODO @mark: test if pointer rewrites work with reference cycle (both when also referenced from stack and when only through cycle, because of forwards)
 
     #[test]
     fn fast_gc_cleans_young_if_unreferenced() {

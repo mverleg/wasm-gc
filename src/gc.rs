@@ -596,7 +596,6 @@ fn collect_fast_handle_pointer(data: &mut Data, pointer_ix: Pointer, young_from_
     // If old enough, move to old heap, and leave a pointer
     println!("at {} from {} header {:#x}", header_pointer, pointer_ix, header_data);
     let gc_age = increment_gc_age(&mut header_data);
-    debug_assert!(gc_age < 2);  //TODO @mark: TEMPORARY! REMOVE THIS!
     debug_assert!(gc_age < 7, "too old for young gc");
 
     // Otherwise (if not old), move to other side of young heap
@@ -665,9 +664,8 @@ pub fn collect_fast() -> FastCollectStats {
             header_ix = header_ix + header.size_32.bytes() + WORD_SIZE;
         }
 
-        eprintln!("re-enable: young_side, young_top"); //TODO @mark:
-        // state.young_side = state.young_side.opposite();
-        // state.young_top = new_young_top;
+        state.young_side = state.young_side.opposite();
+        state.young_top = new_young_top;
         FastCollectStats {
             initial_young_capacity: conf.young_side_capacity,
             initial_young_len: init_young_size.whole_words(),

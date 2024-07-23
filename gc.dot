@@ -11,10 +11,23 @@ digraph GC {
         label="Young heap";
         graph[style=dotted];
         heap_young_active [ label="Young side active" ];
-        heap_young_passive [ label="Young side passive", style="filled" color="lightgray" ];
-        heap_young_active -> heap_young_passive [ label="GC swap", dir="both" ]
+        heap_young_passive [ style="filled" color="lightgray", label="Young side passive" ];
+        heap_young_active -> heap_young_passive [ dir="both", label="GC swap" ]
     }
 
-    stack_shadow -> stack_shadow
-    stack_shadow -> heap_young_active
+    subgraph cluster_heap_old {
+        label="Old heaps";
+        graph[style=dotted];
+        heap_old_mut [ label="Old mutable" ];
+        heap_old_immut [ label="Old immutable" ];
+    }
+
+    heap_young_active -> heap_old_mut [ label="GC move" ]
+    heap_young_active -> heap_old_immut [ label="GC move" ]
+
+    heap_old_mut -> heap_young_active [ style="dashed", label="ref" ]
+    heap_old_immut -> heap_young_active [ style="dashed", label="ref" ]
+    heap_old_mut -> heap_old_immut [ style="dashed", label="ref" ]
+    stack_shadow -> stack_shadow [ style="dashed", label="ref" ]
+    stack_shadow -> heap_young_active [ style="dashed", label="ref" ]
 }

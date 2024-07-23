@@ -1,0 +1,20 @@
+digraph GC {
+
+    subgraph cluster_stack {
+        label="Stack";
+        graph[style=dotted];
+        stack_wasm [ label="Wasm stack" ];
+        stack_shadow [ label="Shadow stack" ];
+    }
+
+    subgraph cluster_heap_young {
+        label="Young heap";
+        graph[style=dotted];
+        heap_young_active [ label="Young side active" ];
+        heap_young_passive [ label="Young side passive", style="filled" color="lightgray" ];
+        heap_young_active -> heap_young_passive [ label="GC swap", dir="both" ]
+    }
+
+    stack_shadow -> stack_shadow
+    stack_shadow -> heap_young_active
+}

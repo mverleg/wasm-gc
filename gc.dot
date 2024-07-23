@@ -5,6 +5,7 @@ digraph GC {
         graph[style=dotted];
         stack_wasm [ label="Wasm stack" ];
         stack_shadow [ label="Shadow stack" ];
+        stack_shadow -> stack_shadow [ style="dashed", label="ref" ]
     }
 
     subgraph cluster_heap_young {
@@ -12,7 +13,8 @@ digraph GC {
         graph[style=dotted];
         heap_young_active [ label="Young side active" ];
         heap_young_passive [ style="filled" color="lightgray", label="Young side passive" ];
-        heap_young_active -> heap_young_passive [ dir="both", label="GC swap" ]
+        heap_young_active -> heap_young_passive [ dir="both", label="GC swap (age++)" ]
+        heap_young_active -> heap_young_active [ style="dashed", label="ref" ]
     }
 
     subgraph cluster_heap_old {
@@ -20,14 +22,15 @@ digraph GC {
         graph[style=dotted];
         heap_old_mut [ label="Old mutable" ];
         heap_old_immut [ label="Old immutable" ];
+        heap_old_mut -> heap_old_mut [ style="dashed", label="ref" ]
+        heap_old_immut -> heap_old_immut [ style="dashed", label="ref" ]
     }
 
     heap_young_active -> heap_old_mut [ label="GC move" ]
-    heap_young_active -> heap_old_immut [ label="GC move" ]
+    heap_young_active:se -> heap_old_immut [ label="GC move" ]
 
     heap_old_mut -> heap_young_active [ style="dashed", label="ref" ]
     heap_old_immut -> heap_young_active [ style="dashed", label="ref" ]
     heap_old_mut -> heap_old_immut [ style="dashed", label="ref" ]
-    stack_shadow -> stack_shadow [ style="dashed", label="ref" ]
     stack_shadow -> heap_young_active [ style="dashed", label="ref" ]
 }

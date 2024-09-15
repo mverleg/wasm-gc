@@ -1,9 +1,16 @@
 
 # Wasm Garbage Collector (GC)
 
-Implement an allocator and garbage collector in WebAssembly (wasm).
+Implement an allocator and garbage collector in (Rust compiled to) WebAssembly.
 
-Not finished yet. Not really designed for reusability.
+**Status: only young generation is usable, no arrays**
+
+This GC is optimized for the [Tel](https://github.com/mverleg/tel) language, and makes some assumptions for that:
+
+* Separate heap per thread.
+* It's known whether a reference is (shallowly) mutable, and ideally most long-lived memory is immutable.
+* Like most garbage collectors, works best if most memory is short-lived.
+* If there is a reference to a field, there is also a reference to the object itself, to prevent it being GC'ed (probably references to fields aren't a language construct, but just an impl detail, so this can be ensured).
 
 ## Design (tentative)
 
